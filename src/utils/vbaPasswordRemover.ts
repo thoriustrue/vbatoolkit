@@ -400,6 +400,11 @@ async function safePasswordRemoval(
   progressCallback: ProgressCallback
 ): Promise<Uint8Array | null> {
   try {
+    logger('Starting password removal process...', 'info');
+    
+    // Log initial file data size
+    logger(`Initial file data size: ${fileData.length} bytes`, 'info');
+    
     // Create a copy of the file data to modify
     const modifiedData = new Uint8Array(fileData);
     
@@ -445,7 +450,7 @@ async function safePasswordRemoval(
           let endIndex = dpbIndex + 4;
           while (endIndex < modifiedData.length && 
                  ((modifiedData[endIndex] >= 32 && modifiedData[endIndex] <= 126) || // printable ASCII
-                  modifiedData[endIndex] === 0x0D || modifiedData[endIndex] === 0x0A)) { // CR/LF
+                  modifiedData[endIndex] === 0x0D || modifiedData[endIndex] === 0x0A)) {
             endIndex++;
           }
           
@@ -506,85 +511,87 @@ async function safePasswordRemoval(
         }
       }
     } else if (fileType === 'ooxml' || fileType === 'xlsb') {
-      // For OOXML files (.xlsm) and XLSB files, we need to look for the vbaProject.bin file
       logger('Using OOXML/XLSB-specific approach...', 'info');
       
-      // Look for "vbaProject.bin" string
-      const vbaProjectBinPattern = [0x76, 0x62, 0x61, 0x50, 0x72, 0x6F, 0x6A, 0x65, 0x63, 0x74, 0x2E, 0x62, 0x69, 0x6E]; // "vbaProject.bin"
+      // Log the presence of vbaProject.bin
+      const vbaProjectBinPattern = [0x76, 0x62, 0x61, 0x50, 0x72, 0x6F, 0x6A, 0x65, 0x63, 0x74, 0x2E, 0x62, 0x69, 0x6E];
       const vbaProjectBinIndices = findAllPatterns(modifiedData, vbaProjectBinPattern);
       
-      if (vbaProjectBinIndices.length > 0) {
-        logger(`Found ${vbaProjectBinIndices.length} vbaProject.bin reference(s).`, 'info');
+      logger(`Found ${vbaProjectBinIndices.length} vbaProject.bin reference(s).`, 'info');
+      
+      // Log each modification attempt
+      for (const vbaIndex of vbaProjectBinIndices) {
+        logger(`Processing vbaProject.bin at index: ${vbaIndex}`, 'info');
         
-        // For each reference, look for password protection in the vicinity
-        for (const vbaIndex of vbaProjectBinIndices) {
-          // Search in a large window around the vbaProject.bin reference
-          const searchWindow = 10000; // 10KB search window
-          const startSearch = Math.max(0, vbaIndex - searchWindow);
-          const endSearch = Math.min(modifiedData.length, vbaIndex + searchWindow);
-          
-          // Look for DPB= and CMG= in the search window
-          for (let i = startSearch; i < endSearch - 4; i++) {
-            // Check for "DPB="
-            if (modifiedData[i] === 0x44 && modifiedData[i+1] === 0x50 && modifiedData[i+2] === 0x42 && modifiedData[i+3] === 0x3D) {
-              logger(`Found DPB= signature near vbaProject.bin at offset ${i - vbaIndex} from reference.`, 'info');
-              
-              // Find the end of the password hash
-              let endIndex = i + 4;
-              while (endIndex < endSearch && 
-                     ((modifiedData[endIndex] >= 32 && modifiedData[endIndex] <= 126) || 
-                      modifiedData[endIndex] === 0x0D || modifiedData[endIndex] === 0x0A)) {
-                endIndex++;
-              }
-              
-              // Replace only the password hash part with zeros
-              for (let j = i + 4; j < endIndex; j++) {
-                modifiedData[j] = 0;
-              }
-              passwordRemoved = true;
+        // Search in a large window around the vbaProject.bin reference
+        const searchWindow = 10000; // 10KB search window
+        const startSearch = Math.max(0, vbaIndex - searchWindow);
+        const endSearch = Math.min(modifiedData.length, vbaIndex + searchWindow);
+        
+        // Look for DPB= and CMG= in the search window
+        for (let i = startSearch; i < endSearch - 4; i++) {
+          // Check for "DPB="
+          if (modifiedData[i] === 0x44 && modifiedData[i+1] === 0x50 && modifiedData[i+2] === 0x42 && modifiedData[i+3] === 0x3D) {
+            logger(`Found DPB= signature near vbaProject.bin at offset ${i - vbaIndex} from reference.`, 'info');
+            
+            // Find the end of the password hash
+            let endIndex = i + 4;
+            while (endIndex < endSearch && 
+                   ((modifiedData[endIndex] >= 32 && modifiedData[endIndex] <= 126) || 
+                    modifiedData[endIndex] === 0x0D || modifiedData[endIndex] === 0x0A)) {
+              endIndex++;
             }
             
-            // Check for "CMG="
-            if (modifiedData[i] === 0x43 && modifiedData[i+1] === 0x4D && modifiedData[i+2] === 0x47 && modifiedData[i+3] === 0x3D) {
-              logger(`Found CMG= signature near vbaProject.bin at offset ${i - vbaIndex} from reference.`, 'info');
-              
-              // Find the end of the password hash
-              let endIndex = i + 4;
-              while (endIndex < endSearch && 
-                     ((modifiedData[endIndex] >= 32 && modifiedData[endIndex] <= 126) || 
-                      modifiedData[endIndex] === 0x0D || modifiedData[endIndex] === 0x0A)) {
-                endIndex++;
-              }
-              
-              // Replace only the password hash part with zeros
-              for (let j = i + 4; j < endIndex; j++) {
-                modifiedData[j] = 0;
-              }
-              passwordRemoved = true;
+            // Replace only the password hash part with zeros
+            for (let j = i + 4; j < endIndex; j++) {
+              modifiedData[j] = 0;
             }
+            passwordRemoved = true;
           }
           
-          // Also look for protection flags (0x01 bytes) near specific markers
-          const protectionMarkers = [
-            [0x44, 0x50, 0x78], // DPx
-            [0x44, 0x50, 0x62], // DPb
-            [0x44, 0x50, 0x49], // DPI
-            [0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E] // Protection
-          ];
-          
-          for (const marker of protectionMarkers) {
-            const markerIndices = findAllPatternsInRange(modifiedData, marker, startSearch, endSearch);
+          // Check for "CMG="
+          if (modifiedData[i] === 0x43 && modifiedData[i+1] === 0x4D && modifiedData[i+2] === 0x47 && modifiedData[i+3] === 0x3D) {
+            logger(`Found CMG= signature near vbaProject.bin at offset ${i - vbaIndex} from reference.`, 'info');
             
-            for (const markerIndex of markerIndices) {
-              // Check if there's a protection flag (0x01) right after the marker
-              if (markerIndex + marker.length < endSearch && modifiedData[markerIndex + marker.length] === 0x01) {
-                modifiedData[markerIndex + marker.length] = 0;
-                passwordRemoved = true;
-                logger(`Cleared protection flag after ${String.fromCharCode(...marker)} marker.`, 'success');
-              }
+            // Find the end of the password hash
+            let endIndex = i + 4;
+            while (endIndex < endSearch && 
+                   ((modifiedData[endIndex] >= 32 && modifiedData[endIndex] <= 126) || 
+                    modifiedData[endIndex] === 0x0D || modifiedData[endIndex] === 0x0A)) {
+              endIndex++;
+            }
+            
+            // Replace only the password hash part with zeros
+            for (let j = i + 4; j < endIndex; j++) {
+              modifiedData[j] = 0;
+            }
+            passwordRemoved = true;
+          }
+        }
+        
+        // Also look for protection flags (0x01 bytes) near specific markers
+        const protectionMarkers = [
+          [0x44, 0x50, 0x78], // DPx
+          [0x44, 0x50, 0x62], // DPb
+          [0x44, 0x50, 0x49], // DPI
+          [0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E] // Protection
+        ];
+        
+        for (const marker of protectionMarkers) {
+          const markerIndices = findAllPatternsInRange(modifiedData, marker, startSearch, endSearch);
+          
+          for (const markerIndex of markerIndices) {
+            // Check if there's a protection flag (0x01) right after the marker
+            if (markerIndex + marker.length < endSearch && modifiedData[markerIndex + marker.length] === 0x01) {
+              modifiedData[markerIndex + marker.length] = 0;
+              passwordRemoved = true;
+              logger(`Cleared protection flag after ${String.fromCharCode(...marker)} marker.`, 'success');
             }
           }
         }
+        
+        // Log the modified data size
+        logger(`Modified data size: ${modifiedData.length} bytes`, 'info');
       }
     }
     
@@ -846,7 +853,7 @@ async function safePasswordRemoval(
     
     return modifiedData;
   } catch (error) {
-    logger(`Error in password removal: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    logger(`Error during password removal: ${error.message}`, 'error');
     return null;
   }
 }

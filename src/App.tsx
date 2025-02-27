@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Upload, FileUp, Download, AlertCircle, CheckCircle, Info, Loader2, RefreshCw, Code, Shield } from 'lucide-react';
 import { removeVBAPassword } from './utils/vbaPasswordRemover';
 import { extractVBACode, VBAModule, createVBACodeFile } from './utils/vbaCodeExtractor';
+import { injectVBACode } from './utils/vbaCodeInjector';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -11,7 +12,8 @@ function App() {
   const [extractedModules, setExtractedModules] = useState<VBAModule[]>([]);
   const [logs, setLogs] = useState<Array<{ message: string; type: 'info' | 'error' | 'success' }>>([]);
   const [progress, setProgress] = useState(0);
-  const [activeTab, setActiveTab] = useState<'remove' | 'extract'>('remove');
+  const [activeTab, setActiveTab] = useState<'remove' | 'extract' | 'alternative'>('remove');
+  const [method, setMethod] = useState<'remove' | 'extract' | 'alternative'>('remove');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
@@ -86,6 +88,26 @@ function App() {
     setLogs([]);
     addLog(`Ready to process file: ${file?.name}`, 'info');
   }, [file, addLog]);
+
+  const handleFileUpload = async (file: File) => {
+    if (!validateFile(file)) return;
+
+    setIsProcessing(true);
+    addLog('Processing file...', 'info');
+
+    try {
+      const fileData = await file.arrayBuffer();
+      if (method === 'alternative') {
+        await injectVBACode(fileData, addLog);
+      } else {
+        // Existing processing logic
+      }
+    } catch (error) {
+      addLog(`Error processing file: ${error.message}`, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const processFile = useCallback(async () => {
     if (!file) return;
@@ -271,7 +293,7 @@ function App() {
                           activeTab === 'remove'
                             ? 'border-indigo-500 text-indigo-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+                        } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
                       >
                         Remove VBA Password
                       </button>
@@ -281,16 +303,26 @@ function App() {
                           activeTab === 'extract'
                             ? 'border-indigo-500 text-indigo-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        } w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+                        } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
                       >
                         Extract VBA Code
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('alternative')}
+                        className={`${
+                          activeTab === 'alternative'
+                            ? 'border-indigo-500 text-indigo-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+                      >
+                        Alternative Method
                       </button>
                     </nav>
                   </div>
                   
                   <div className="flex justify-between items-center">
                     <h3 className="text-md font-medium text-gray-900">
-                      {activeTab === 'remove' ? 'Remove VBA Password' : 'Extract VBA Code'}
+                      {activeTab === 'remove' ? 'Remove VBA Password' : activeTab === 'extract' ? 'Extract VBA Code' : 'Alternative Method'}
                     </h3>
                     <div className="flex space-x-2">
                       {!isProcessing && activeTab === 'remove' && !processedFile && (
