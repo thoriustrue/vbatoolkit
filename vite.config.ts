@@ -7,9 +7,8 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
-  // Add base configuration for GitHub Pages - CRITICAL!
-  // This should match your GitHub repository name
-  base: './',  // Use relative paths for better compatibility
+  // GitHub Pages configuration for the vbatoolkit repository
+  base: '/vbatoolkit/',  // Explicitly use the repository name
   build: {
     // Ensure sourcemaps are generated
     sourcemap: true,
