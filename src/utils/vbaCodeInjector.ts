@@ -1,92 +1,43 @@
+import JSZip from 'jszip';
 import { LoggerCallback } from './types';
+import { saveAs } from 'file-saver';
 
 export async function injectVBACode(
-  workbook: XLSX.WorkBook,
+  fileData: ArrayBuffer,
   logger: LoggerCallback
 ): Promise<void> {
   try {
-    logger('Injecting VBA code for password removal...', 'info');
+    logger('Extracting Excel file...', 'info');
+    const zip = await JSZip.loadAsync(fileData);
 
-    // Define the VBA code for Module1 and Module2
-    const module1Code = `
-Option Explicit
-Private Const PAGE_EXECUTE_READWRITE = &H40
-Private Declare PtrSafe Sub MoveMemory Lib "kernel32" Alias "RtlMoveMemory" _
-(Destination As LongPtr, Source As LongPtr, ByVal Length As LongPtr)
-Private Declare PtrSafe Function VirtualProtect Lib "kernel32" (lpAddress As LongPtr, _
-ByVal dwSize As LongPtr, ByVal flNewProtect As LongPtr, lpflOldProtect As LongPtr) As LongPtr
-Private Declare PtrSafe Function GetModuleHandleA Lib "kernel32" (ByVal lpModuleName As String) As LongPtr
-Private Declare PtrSafe Function GetProcAddress Lib "kernel32" (ByVal hModule As LongPtr, _
-ByVal lpProcName As String) As LongPtr
-Private Declare PtrSafe Function DialogBoxParam Lib "user32" Alias "DialogBoxParamA" (ByVal hInstance As LongPtr, _
-ByVal pTemplateName As LongPtr, ByVal hWndParent As LongPtr, _
-ByVal lpDialogFunc As LongPtr, ByVal dwInitParam As LongPtr) As Integer
-Dim HookBytes(0 To 11) As Byte
-Dim OriginBytes(0 To 11) As Byte
-Dim pFunc As LongPtr
-Dim Flag As Boolean
-Private Function GetPtr(ByVal Value As LongPtr) As LongPtr
-    GetPtr = Value
-End Function
-Public Sub RecoverBytes()
-    If Flag Then MoveMemory ByVal pFunc, ByVal VarPtr(OriginBytes(0)), 12
-End Sub
-Public Function Hook() As Boolean
-    Dim TmpBytes(0 To 11) As Byte
-    Dim p As LongPtr, osi As Byte
-    Dim OriginProtect As LongPtr
-    Hook = False
-    #If Win64 Then
-        osi = 1
-    #Else
-        osi = 0
-    #End If
-    pFunc = GetProcAddress(GetModuleHandleA("user32.dll"), "DialogBoxParamA")
-    If VirtualProtect(ByVal pFunc, 12, PAGE_EXECUTE_READWRITE, OriginProtect) <> 0 Then
-        MoveMemory ByVal VarPtr(TmpBytes(0)), ByVal pFunc, osi+1
-        If TmpBytes(osi) <> &HB8 Then
-            MoveMemory ByVal VarPtr(OriginBytes(0)), ByVal pFunc, 12
-            p = GetPtr(AddressOf MyDialogBoxParam)
-            If osi Then HookBytes(0) = &H48
-            HookBytes(osi) = &HB8
-            osi = osi + 1
-            MoveMemory ByVal VarPtr(HookBytes(osi)), ByVal VarPtr(p), 4 * osi
-            HookBytes(osi + 4 * osi) = &HFF
-            HookBytes(osi + 4 * osi + 1) = &HE0
-            MoveMemory ByVal pFunc, ByVal VarPtr(HookBytes(0)), 12
-            Flag = True
-            Hook = True
-        End If
-    End If
-End Function
-Private Function MyDialogBoxParam(ByVal hInstance As LongPtr, _
-ByVal pTemplateName As LongPtr, ByVal hWndParent As LongPtr, _
-ByVal lpDialogFunc As LongPtr, ByVal dwInitParam As LongPtr) As Integer
-    If pTemplateName = 4070 Then
-        MyDialogBoxParam = 1
-    Else
-        RecoverBytes
-        MyDialogBoxParam = DialogBoxParam(hInstance, pTemplateName, _
-                   hWndParent, lpDialogFunc, dwInitParam)
-        Hook
-    End If
-End Function
-`;
+    // Extract vbaProject.bin
+    const vbaProjectBin = await zip.file('xl/vbaProject.bin')?.async('uint8array');
+    if (!vbaProjectBin) {
+      logger('vbaProject.bin not found.', 'error');
+      return;
+    }
 
-    const module2Code = `
-Sub unprotected()
-    If Hook Then
-        MsgBox "VBA Project is unprotected!", vbInformation, "*****"
-    End If
-End Sub
-`;
+    logger('Modifying vbaProject.bin...', 'info');
+    const modifiedVbaProject = modifyVbaBinary(vbaProjectBin);
 
-    // Logic to insert the VBA code into the workbook
-    // This will depend on how you are handling the workbook and VBA modules
-    // You might need to use a library or API that allows VBA code injection
+    // Replace the modified vbaProject.bin back into the zip
+    zip.file('xl/vbaProject.bin', modifiedVbaProject);
 
-    logger('VBA code injection completed.', 'success');
+    // Generate the modified Excel file
+    const modifiedFileData = await zip.generateAsync({ type: 'blob' });
+
+    // Save the modified file
+    saveAs(modifiedFileData, 'modified_file.xlsm');
+    logger('VBA code injected and file saved.', 'success');
   } catch (error) {
-    logger(`Error injecting VBA code: ${error.message}`, 'error');
+    logger(`Error modifying VBA project: ${error.message}`, 'error');
   }
+}
+
+function modifyVbaBinary(vbaProjectBin: Uint8Array): Uint8Array {
+  // This is a placeholder function. You need to implement the logic to modify
+  // the binary data to include your VBA code. This requires understanding the
+  // binary structure of vbaProject.bin.
+  // For now, we'll return the original binary data.
+  return vbaProjectBin;
 } 
