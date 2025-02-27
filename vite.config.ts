@@ -7,9 +7,9 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
-  // Add base configuration for GitHub Pages
-  // Replace 'excel-vba-password-remover' with your actual repository name
-  base: '/excel-vba-password-remover/',
+  // Add base configuration for GitHub Pages - CRITICAL!
+  // This should match your GitHub repository name
+  base: './',  // Use relative paths for better compatibility
   build: {
     // Ensure sourcemaps are generated
     sourcemap: true,
