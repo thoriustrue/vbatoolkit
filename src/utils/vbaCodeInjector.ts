@@ -10,6 +10,9 @@ export async function injectVBACode(
     logger('Extracting Excel file...', 'info');
     const zip = await JSZip.loadAsync(fileData);
 
+    // Log the contents of the ZIP archive
+    logger(`ZIP contents: ${Object.keys(zip.files).join(', ')}`, 'info');
+
     // Extract vbaProject.bin
     const vbaProjectBin = await zip.file('xl/vbaProject.bin')?.async('uint8array');
     if (!vbaProjectBin) {
