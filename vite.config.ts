@@ -38,11 +38,12 @@ export default defineConfig({
     sourcemap: true,
     // Improve output for deployment
     assetsInlineLimit: 0,
+    assetsDir: 'static',
     rollupOptions: {
       output: {
         entryFileNames: `assets/[name].js`,
         chunkFileNames: `assets/[name].js`,
-        assetFileNames: `assets/[name].[ext]`,
+        assetFileNames: 'static/[name].[ext]',
         manualChunks: {
           vendor: ['react', 'react-dom'],
           xlsx: ['xlsx'],
