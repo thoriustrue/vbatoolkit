@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2025-03-01
+
+### Added
+- Technical error logging panel for debugging
+- Changelog viewer to track version history
+- Improved error handling with detailed stack traces
+- Enhanced VBA code extraction with multiple encoding support
+- Maximum trust settings to prevent Excel security prompts
+
+### Fixed
+- Dependency issues with adm-zip
+- Build process reliability improvements
+- File corruption when processing large Excel files
+- Overly aggressive file integrity fixes that removed necessary files
+- Excel repair dialog issues when opening unprotected files
+
+### Changed
+- Updated build configuration for GitHub Pages
+- Improved ZIP validation with CRC checks
+- Simplified UI by removing alternate method tab
+- More robust VBA project binary parsing
+
+## [1.0.1] - 2025-02-29
+
+### Fixed
+- File corruption issues with large Excel files
+- Missing dependencies in package.json
+
+### Added
+- CRC validation for ZIP archives
+- Better error messages for common failures
+
+### Changed
+- Improved error handling and logging
+- Updated dependency management
+
+## [1.0.0] - 2025-02-28
+
+### Added
+- Initial release of VBA Toolkit
+- VBA password removal functionality
+- Excel security settings removal
+- Support for .xlsm, .xls, and .xlsb files
+
 ## [0.1.0] - 2025-02-28
 
 - Fixes
@@ -60,43 +104,4 @@ All notable changes to this project will be documented in this file.
 - Update vite.config.ts
 - Update index.html
 - Update vite.config.ts
-- Update static.yml
-
-
-## [1.1.0] - 2025-03-01
-
-### Added
-- Technical error logging panel for debugging
-- Changelog viewer to track version history
-- Improved error handling with detailed stack traces
-
-### Fixed
-- Dependency issues with adm-zip
-- Build process reliability improvements
-- File corruption when processing large Excel files
-
-### Changed
-- Updated build configuration for GitHub Pages
-- Improved ZIP validation with CRC checks
-
-## [1.0.1] - 2025-02-29
-
-### Fixed
-- File corruption issues with large Excel files
-- Missing dependencies in package.json
-
-### Added
-- CRC validation for ZIP archives
-- Better error messages for common failures
-
-### Changed
-- Improved error handling and logging
-- Updated dependency management
-
-## [1.0.0] - 2025-02-28
-
-### Added
-- Initial release of VBA Toolkit
-- VBA password removal functionality
-- Excel security settings removal
-- Support for .xlsm, .xls, and .xlsb files 
+- Update static.yml 
