@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { removeExcelSecurity } from './excelSecurityRemover';
-import { OfficeCrypto } from 'office-crypto';
+import { OfficeCrypto } from 'officecrypto-tool';
 
 // Type for the logger callback function
 type LoggerCallback = (message: string, type: 'info' | 'error' | 'success') => void;
@@ -58,52 +58,10 @@ async function processVBAContainer(
   fileData: Uint8Array,
   logger: LoggerCallback
 ): Promise<Uint8Array> {
-  const originalZip = await JSZip.loadAsync(fileData);
-  
-  // Preserve all original files and their compression settings
-  const newZip = new JSZip();
-  
-  // 1. Copy all original files with their metadata
-  originalZip.forEach((path, entry) => {
-    newZip.file(path, entry, {
-      compression: entry.options.compression,
-      compressionOptions: entry.options.compressionOptions,
-      date: entry.options.date,
-      unixPermissions: entry.options.unixPermissions,
-      dosPermissions: entry.options.dosPermissions
-    });
-  });
-
-  // 2. Only modify vbaProject.bin
-  const vbaProject = originalZip.file('xl/vbaProject.bin');
-  if (!vbaProject) {
-    logger('VBA project not found', 'error');
-    throw new Error('Missing vbaProject.bin');
-  }
-
-  // 3. Process VBA project while preserving compression
-  const originalCompression = vbaProject.options.compression;
-  const decrypted = await OfficeCrypto.decrypt(
-    await vbaProject.async('nodebuffer'),
-    { type: 'agile' }
-  );
-  
-  const processed = await OfficeCrypto.removeProtection(decrypted);
-  const encrypted = await OfficeCrypto.encrypt(processed, { type: 'agile' });
-  
-  // 4. Update with original compression
-  newZip.file('xl/vbaProject.bin', encrypted, {
-    compression: originalCompression,
-    date: vbaProject.options.date
-  });
-
-  // 5. Generate with original settings
-  return newZip.generateAsync({
-    type: 'uint8array',
-    compression: 'STORE', // Force container-level store
-    platform: 'DOS', // Required for Excel compatibility
-    comment: originalZip.comment
-  });
+  // Uses officecrypto-tool's validated methods
+  const decrypted = await OfficeCrypto.decrypt(fileData);
+  const processed = OfficeCrypto.removeProtection(decrypted);
+  return OfficeCrypto.encrypt(processed);
 }
 
 /**
