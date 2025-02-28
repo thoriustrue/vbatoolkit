@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "office-crc": "^1.2.0",
+    "office-crypto": "^0.4.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",

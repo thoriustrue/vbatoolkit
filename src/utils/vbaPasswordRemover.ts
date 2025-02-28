@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { removeExcelSecurity } from './excelSecurityRemover';
+import { OfficeCrypto } from './OfficeCrypto';
 
 // Type for the logger callback function
 type LoggerCallback = (message: string, type: 'info' | 'error' | 'success') => void;
@@ -19,83 +20,30 @@ export async function removeVBAPassword(
   progressCallback: ProgressCallback
 ): Promise<Blob | null> {
   try {
-    logger(`Processing file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`, 'info');
-    progressCallback(5);
+    const fileData = new Uint8Array(await readFileAsArrayBuffer(file));
+    const zip = await JSZip.loadAsync(fileData);
     
-    // Read the file as an ArrayBuffer
-    const arrayBuffer = await readFileAsArrayBuffer(file);
-    const fileData = new Uint8Array(arrayBuffer);
-    
-    logger('File loaded successfully. Analyzing structure...', 'info');
-    progressCallback(15);
-    
-    // First check if this is a valid Excel file
-    if (!isValidExcelFile(fileData)) {
-      logger('This does not appear to be a valid Excel file. Please ensure you are uploading an Excel file (.xlsm, .xls, .xlsb).', 'error');
-      return null;
+    // Validate before processing
+    const admZip = new AdmZip(Buffer.from(fileData));
+    if (!validateOfficeCRC(admZip, logger)) {
+      throw new Error('Invalid Office file structure');
     }
+
+    // Process VBA container
+    const processed = await processVBAContainer(fileData, logger);
     
-    logger('Valid Excel file detected.', 'info');
-    progressCallback(25);
-    
-    // Try to detect if the file has VBA content
-    const hasVBA = detectVBAContent(fileData);
-    if (!hasVBA) {
-      logger('Warning: No clear VBA content detected in this file. Will still attempt to process it.', 'info');
-    } else {
-      logger('VBA content detected in the file.', 'info');
+    // Final validation
+    const finalZip = new AdmZip(Buffer.from(processed));
+    if (!validateOfficeCRC(finalZip, logger)) {
+      throw new Error('Final file failed CRC validation');
     }
+
+    return new Blob([processed], { 
+      type: 'application/vnd.ms-excel.sheet.macroEnabled.12' 
+    });
     
-    progressCallback(35);
-    
-    // For OOXML files, try the direct VBA project.bin approach first
-    let modifiedData = fileData;
-    let passwordRemoved = false;
-    
-    if (isOfficeOpenXML(fileData)) {
-      logger('Attempting direct VBA project modification for Office Open XML file...', 'info');
-      const directResult = await processVBAProjectBin(fileData, logger);
-      
-      if (directResult) {
-        modifiedData = directResult;
-        passwordRemoved = true;
-        logger('Successfully modified VBA project using direct binary approach.', 'success');
-      } else {
-        logger('Direct VBA project modification failed, falling back to standard approach.', 'info');
-      }
-    }
-    
-    // If direct approach didn't work or it's not an OOXML file, use the standard approach
-    if (!passwordRemoved) {
-      // Use a more careful approach to preserve file integrity
-      const standardResult = await safePasswordRemoval(modifiedData, logger, progressCallback);
-      
-      if (standardResult) {
-        modifiedData = standardResult;
-        logger('Password protection removed using standard approach.', 'success');
-      } else {
-        logger('Failed to process the file. No password signatures found or unsupported format.', 'error');
-        return null;
-      }
-    }
-    
-    // Apply Excel security removal to auto-enable macros and external links
-    logger('Applying security settings to auto-enable macros and external links...', 'info');
-    progressCallback(85);
-    
-    // Try to remove Excel security settings
-    const securityRemovedData = await removeExcelSecurity(modifiedData, logger);
-    
-    // Use the security-removed data if available, otherwise use the password-removed data
-    const finalData = securityRemovedData || modifiedData;
-    
-    logger('File processing completed. Creating output file...', 'success');
-    progressCallback(95);
-    
-    // Return the modified file with the original file type
-    return new Blob([finalData], { type: file.type });
   } catch (error) {
-    logger(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    logger(`Password removal failed: ${error.message}`, 'error');
     return null;
   }
 }
@@ -106,192 +54,48 @@ export async function removeVBAPassword(
  * @param logger Callback function for logging messages
  * @returns The modified file data, or null if processing failed
  */
-async function processVBAProjectBin(
+async function processVBAContainer(
   fileData: Uint8Array,
   logger: LoggerCallback
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array> {
   try {
-    // Load the file as a ZIP archive
-    const zip = new JSZip();
-    const zipData = await zip.loadAsync(fileData);
+    const zip = await JSZip.loadAsync(fileData);
+    const vbaProject = zip.file('xl/vbaProject.bin');
     
-    // Check if the vbaProject.bin file exists
-    if (!zipData.files['xl/vbaProject.bin']) {
-      logger('No vbaProject.bin file found in the Excel file.', 'info');
-      return null;
+    if (!vbaProject) {
+      logger('No VBA project found in document', 'error');
+      throw new Error('VBA project missing');
     }
-    
-    // Extract the vbaProject.bin file
-    const vbaProjectBin = await zipData.files['xl/vbaProject.bin'].async('uint8array');
-    logger('Found vbaProject.bin file. Size: ' + vbaProjectBin.length + ' bytes.', 'info');
-    
-    // Create a modified copy of the vbaProject.bin file
-    const modifiedVbaProject = new Uint8Array(vbaProjectBin);
-    let passwordRemoved = false;
-    
-    // Search for known password protection patterns in the vbaProject.bin file
-    const protectionPatterns = [
-      // DPB pattern (most common)
-      { pattern: [0x44, 0x50, 0x42, 0x3D], name: "DPB=" },
-      // CMG pattern
-      { pattern: [0x43, 0x4D, 0x47, 0x3D], name: "CMG=" },
-      // GC pattern
-      { pattern: [0x47, 0x43, 0x3D], name: "GC=" },
-      // DPx pattern with flag
-      { pattern: [0x44, 0x50, 0x78, 0x01], name: "DPx" },
-      // DPb pattern with flag
-      { pattern: [0x44, 0x50, 0x62, 0x01], name: "DPb" },
-      // DPI pattern with flag
-      { pattern: [0x44, 0x50, 0x49, 0x01], name: "DPI" },
-      // Project protection
-      { pattern: [0x50, 0x72, 0x6F, 0x6A, 0x65, 0x63, 0x74, 0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E], name: "ProjectProtection" },
-      // Password protection
-      { pattern: [0x50, 0x61, 0x73, 0x73, 0x77, 0x6F, 0x72, 0x64, 0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E], name: "PasswordProtection" },
-    ];
-    
-    const validatePatternPosition = (index: number, buffer: Uint8Array) => {
-      if (index > buffer.length - 100) {
-        logger(`Suspicious pattern position at offset ${index}`, 'warning');
-        return false;
+
+    // Decrypt the VBA project using OfficeCrypto
+    const decrypted = await OfficeCrypto.decrypt(
+      await vbaProject.async('nodebuffer'),
+      { type: 'agile' } // Supports AES encryption used in modern Office
+    );
+
+    // Remove password protection flags
+    const modifiedProject = decrypted.map(byte => {
+      // Reset protection flags while preserving checksums
+      if (byte === 0x01 && decrypted[i-1] === 0x44 && decrypted[i-2] === 0x50) {
+        return 0x00;
       }
-      return true;
-    };
-    
-    for (const { pattern, name } of protectionPatterns) {
-      const indices = findAllPatterns(modifiedVbaProject, pattern);
-      
-      if (indices.length > 0) {
-        logger(`Found ${indices.length} ${name} pattern(s) in vbaProject.bin.`, 'info');
-        
-        for (const index of indices) {
-          if (!validatePatternPosition(index, modifiedVbaProject)) continue;
-          
-          if (name.endsWith("=")) {
-            // For patterns like DPB=, CMG=, GC=, clear the hash value
-            let endIndex = index + pattern.length;
-            while (endIndex < modifiedVbaProject.length && 
-                   ((modifiedVbaProject[endIndex] >= 32 && modifiedVbaProject[endIndex] <= 126) || 
-                    modifiedVbaProject[endIndex] === 0x0D || modifiedVbaProject[endIndex] === 0x0A)) {
-              modifiedVbaProject[endIndex] = 0x20; // Replace with space
-              endIndex++;
-            }
-          } else if (pattern[pattern.length - 1] === 0x01) {
-            // For patterns ending with 0x01 flag, clear the flag
-            modifiedVbaProject[index + pattern.length - 1] = 0x00;
-            
-            // Also clear a few bytes after the pattern to be safe
-            for (let i = 0; i < 8; i++) {
-              if (index + pattern.length + i < modifiedVbaProject.length) {
-                modifiedVbaProject[index + pattern.length + i] = 0x00;
-              }
-            }
-          } else {
-            // For other patterns, look for 0x01 flags nearby
-            const searchRange = 20; // Search 20 bytes after the pattern
-            for (let i = index + pattern.length; i < index + pattern.length + searchRange && i < modifiedVbaProject.length; i++) {
-              if (modifiedVbaProject[i] === 0x01) {
-                modifiedVbaProject[i] = 0x00;
-              }
-            }
-          }
-          
-          passwordRemoved = true;
-        }
-      }
-    }
-    
-    // Additional specific patterns for VBA project protection
-    const specificPatterns = [
-      // Excel 2010-2013 protection pattern
-      { pattern: [0x44, 0x50, 0x42, 0x3D, 0x22], name: "DPB=\"" },
-      // Excel 2016-2019 protection pattern
-      { pattern: [0x44, 0x50, 0x78, 0x01, 0x00, 0x00, 0x00], name: "DPx\\x01\\x00\\x00\\x00" },
-      // Excel 365 protection pattern
-      { pattern: [0x44, 0x50, 0x49, 0x01, 0x00, 0x00, 0x00], name: "DPI\\x01\\x00\\x00\\x00" },
-      // Protection flag pattern
-      { pattern: [0x56, 0x42, 0x41, 0x50, 0x72, 0x6F, 0x6A, 0x65, 0x63, 0x74, 0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E], name: "VBAProjectProtection" },
-    ];
-    
-    for (const { pattern, name } of specificPatterns) {
-      const indices = findAllPatterns(modifiedVbaProject, pattern);
-      
-      if (indices.length > 0) {
-        logger(`Found ${indices.length} ${name} specific pattern(s) in vbaProject.bin.`, 'info');
-        
-        for (const index of indices) {
-          if (!validatePatternPosition(index, modifiedVbaProject)) continue;
-          
-          // For specific patterns, clear a larger area to ensure all protection is removed
-          const clearRange = 50; // Clear 50 bytes after the pattern
-          for (let i = index + pattern.length; i < index + pattern.length + clearRange && i < modifiedVbaProject.length; i++) {
-            modifiedVbaProject[i] = 0x00;
-          }
-          
-          passwordRemoved = true;
-        }
-      }
-    }
-    
-    // Look for protection flags (0x01) near specific markers
-    const protectionMarkers = [
-      { pattern: [0x44, 0x50, 0x78], name: "DPx" }, // DPx
-      { pattern: [0x44, 0x50, 0x62], name: "DPb" }, // DPb
-      { pattern: [0x44, 0x50, 0x49], name: "DPI" }, // DPI
-      { pattern: [0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E], name: "Protection" } // Protection
-    ];
-    
-    for (const { pattern, name } of protectionMarkers) {
-      const indices = findAllPatterns(modifiedVbaProject, pattern);
-      
-      if (indices.length > 0) {
-        logger(`Found ${indices.length} ${name} marker(s) in vbaProject.bin.`, 'info');
-        
-        for (const index of indices) {
-          if (!validatePatternPosition(index, modifiedVbaProject)) continue;
-          
-          // Check if there's a protection flag (0x01) right after the marker
-          if (index + pattern.length < modifiedVbaProject.length) {
-            // Clear several bytes after the marker to be safe
-            for (let i = 0; i < 10; i++) {
-              if (index + pattern.length + i < modifiedVbaProject.length) {
-                if (modifiedVbaProject[index + pattern.length + i] === 0x01) {
-                  modifiedVbaProject[index + pattern.length + i] = 0x00;
-                  passwordRemoved = true;
-                  logger(`Cleared protection flag after ${name} marker.`, 'success');
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // If no password protection was found or removed, return null
-    if (!passwordRemoved) {
-      logger('No password protection patterns found in vbaProject.bin.', 'info');
-      return null;
-    }
-    
-    // Update the vbaProject.bin file in the ZIP
-    zipData.file('xl/vbaProject.bin', modifiedVbaProject);
-    
-    // Generate the modified ZIP file
-    const modifiedZip = await zipData.generateAsync({
-      type: 'uint8array',
-      compression: 'DEFLATE',
-      compressionOptions: {
-        level: 9
-      }
+      return byte;
     });
+
+    // Re-encrypt and update the ZIP
+    const encrypted = await OfficeCrypto.encrypt(
+      Buffer.from(modifiedProject),
+      { type: 'agile' }
+    );
     
-    logger('Successfully modified vbaProject.bin to remove password protection.', 'success');
-    return modifiedZip;
+    zip.file('xl/vbaProject.bin', encrypted);
+    return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    
   } catch (error) {
-    logger(`Error processing vbaProject.bin: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    return null;
+    logger(`VBA processing failed: ${error.message}`, 'error');
+    throw error;
   }
 }
-
 /**
  * Checks if the file is a valid Excel file
  * @param data The file data

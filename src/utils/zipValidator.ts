@@ -1,5 +1,6 @@
 import AdmZip from 'adm-zip';
 import { LoggerCallback } from './types';
+import { validate } from 'office-crc';
 
 export async function validateZipFile(data: ArrayBuffer, logger: LoggerCallback) {
   try {
@@ -50,4 +51,21 @@ export function validateExcelStructure(zip: AdmZip, logger: LoggerCallback) {
       logger('Invalid workbook.xml: Missing root namespace declaration', 'error');
     }
   }
+}
+
+export function validateOfficeCRC(zip: AdmZip, logger: LoggerCallback) {
+  const files = zip.getEntries().map(e => ({
+    name: e.entryName,
+    content: zip.readFile(e)
+  }));
+  
+  const results = validate(files);
+  
+  results.forEach(result => {
+    if (!result.valid) {
+      logger(`CRC mismatch in ${result.fileName}: ${result.message}`, 'error');
+    }
+  });
+  
+  return results.every(r => r.valid);
 } 
