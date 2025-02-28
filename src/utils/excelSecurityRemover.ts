@@ -23,8 +23,7 @@ export async function removeExcelSecurity(
     logger('Processing Excel file to remove security restrictions...', 'info');
     
     // Load the file as a ZIP archive
-    const zip = new JSZip();
-    const zipData = await zip.loadAsync(fileData);
+    const zipData = await JSZip.loadAsync(fileData);
     
     // Check if this is a valid Excel file
     if (!zipData.files['[Content_Types].xml']) {
