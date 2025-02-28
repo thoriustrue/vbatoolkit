@@ -2,6 +2,7 @@
 
 import JSZip from 'jszip';
 import { LoggerCallback } from './types';
+import { Buffer } from 'buffer';
 
 /**
  * Validates a ZIP file structure
