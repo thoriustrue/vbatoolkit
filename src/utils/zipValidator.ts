@@ -1,30 +1,72 @@
 import AdmZip from 'adm-zip';
 import { LoggerCallback } from './types';
 
-export async function validateZipFile(data: ArrayBuffer, logger: LoggerCallback) {
+/**
+ * Validates a ZIP file structure
+ * @param fileData The file data to validate
+ * @param logger Callback function for logging messages
+ * @returns True if validation passes, false otherwise
+ */
+export async function validateZipFile(
+  fileData: ArrayBuffer,
+  logger: LoggerCallback
+): Promise<boolean> {
   try {
-    const zip = new AdmZip(Buffer.from(data));
-    validateExcelStructure(zip, logger);
-    const zipEntries = zip.getEntries();
+    const zip = new AdmZip(Buffer.from(fileData));
     
-    logger(`ZIP contains ${zipEntries.length} entries`, 'info');
+    // Check if the ZIP has valid entries
+    const entries = zip.getEntries();
+    if (entries.length === 0) {
+      logger('ZIP file contains no entries', 'error');
+      return false;
+    }
     
-    zipEntries.forEach(entry => {
-      const entryInfo = [
-        `Entry: ${entry.entryName}`,
-        `Compressed: ${entry.header.sizeCompressed} bytes`,
-        `Uncompressed: ${entry.header.size} bytes`,
-        `Method: ${entry.header.method === 0 ? 'STORE' : 'DEFLATE'}`
-      ].join(' | ');
-      
-      logger(entryInfo, 'info');
+    logger(`ZIP file contains ${entries.length} entries`, 'info');
+    
+    // Validate CRC checksums
+    if (!validateOfficeCRC(zip, logger)) {
+      logger('ZIP file has CRC validation errors', 'error');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    logger(`ZIP validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return false;
+  }
+}
+
+/**
+ * Validates CRC checksums in the ZIP file
+ * @param zip The AdmZip instance
+ * @param logger Callback function for logging messages
+ * @returns True if all CRCs are valid, false otherwise
+ */
+export function validateOfficeCRC(zip: AdmZip, logger: LoggerCallback): boolean {
+  try {
+    let valid = true;
+    
+    zip.getEntries().forEach(entry => {
+      try {
+        // Skip directories
+        if (entry.isDirectory) return;
+        
+        const headerCRC = entry.header.crc;
+        // AdmZip calculates CRC when reading the file
+        const content = entry.getData();
+        
+        // Log successful validation
+        logger(`Validated CRC for ${entry.entryName}`, 'info');
+      } catch (error) {
+        logger(`CRC check failed for ${entry.entryName}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        valid = false;
+      }
     });
     
-    const comment = zip.getZipComment();
-    logger(`ZIP comment: ${comment || 'None'}`, 'info');
-    
+    return valid;
   } catch (error) {
-    logger(`ZIP validation failed: ${error.message}`, 'error');
+    logger(`CRC validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return false;
   }
 }
 
@@ -50,17 +92,4 @@ export function validateExcelStructure(zip: AdmZip, logger: LoggerCallback) {
       logger('Invalid workbook.xml: Missing root namespace declaration', 'error');
     }
   }
-}
-
-export function validateOfficeCRC(zip: AdmZip, logger: LoggerCallback) {
-  zip.getEntries().forEach(entry => {
-    const storedCRC = entry.header.crc.toString(16).padStart(8, '0');
-    const calculatedCRC = entry.getCrc32('hex');
-    
-    if (calculatedCRC !== storedCRC) {
-      logger(`CRC mismatch in ${entry.entryName}: 
-        Stored: 0x${storedCRC}
-        Calculated: 0x${calculatedCRC}`, 'error');
-    }
-  });
 } 
