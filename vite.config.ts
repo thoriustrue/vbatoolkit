@@ -31,6 +31,13 @@ export default defineConfig({
       ]
     }
   },
+  resolve: {
+    alias: {
+      // Force our custom zip.js to be used
+      './zip': './src/utils/zip.js',
+      'zip.js': './src/utils/zip.js'
+    }
+  },
   // GitHub Pages configuration for the vbatoolkit repository
   base: '/vbatoolkit/',  // Replace with your actual repository name
   build: {
@@ -39,6 +46,10 @@ export default defineConfig({
     // Improve output for deployment
     assetsInlineLimit: 0,
     assetsDir: 'static',
+    // Improve CommonJS compatibility
+    commonjsOptions: {
+      transformMixedEsModules: true
+    },
     rollupOptions: {
       output: {
         entryFileNames: `assets/[name].js`,
@@ -49,7 +60,13 @@ export default defineConfig({
           xlsx: ['xlsx'],
           jszip: ['jszip'],
           // Create a separate chunk for buffer polyfill
-          polyfill: ['buffer']
+          polyfill: ['buffer'],
+          // Ensure our zip.js is included in the main chunk
+          main: (id) => {
+            if (id.includes('zip.js')) {
+              return 'main';
+            }
+          }
         }
       }
     }

@@ -6,6 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Excel VBA Password Remover</title>
     <meta name="description" content="Client-side Excel VBA password protection remover tool" />
+    <!-- CRITICAL: Preload Buffer polyfill -->
+    <script>
+      // Global Buffer polyfill that will be available before any modules load
+      window.Buffer = {
+        from: function(data) {
+          if (Array.isArray(data)) {
+            return new Uint8Array(data);
+          }
+          return new Uint8Array();
+        },
+        isBuffer: function() { return false; },
+        equals: function(other) {
+          if (!this || !other) return false;
+          if (this.length !== other.length) return false;
+          for (let i = 0; i < this.length; i++) {
+            if (this[i] !== other[i]) return false;
+          }
+          return true;
+        }
+      };
+      console.log("Preload Buffer polyfill initialized");
+    </script>
   </head>
   <body>
     <div id="root"></div>

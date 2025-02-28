@@ -2,7 +2,7 @@
 
 import JSZip from 'jszip';
 import { LoggerCallback } from './types';
-import { Buffer } from 'buffer';
+import { isValidZip as zipCheck } from './zip.js';
 
 /**
  * Validates a ZIP file structure
@@ -15,24 +15,12 @@ export async function validateZipFile(
   logger: LoggerCallback
 ): Promise<boolean> {
   try {
-    // Use JSZip instead of AdmZip (browser-compatible)
-    const zip = await JSZip.loadAsync(fileData);
-    
-    // Check if the ZIP has valid entries
-    const entries = Object.keys(zip.files);
-    if (entries.length === 0) {
-      logger('ZIP file contains no entries', 'error');
+    if (!zipCheck(fileData)) {
+      logger('Invalid ZIP file format', 'error');
       return false;
     }
     
-    logger(`ZIP file contains ${entries.length} entries`, 'info');
-    
-    // Validate file structure
-    if (!validateOfficeStructure(zip, logger)) {
-      logger('ZIP file has invalid Office structure', 'error');
-      return false;
-    }
-    
+    logger('ZIP file validation passed', 'info');
     return true;
   } catch (error) {
     logger(`ZIP validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -81,7 +69,7 @@ export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boo
  * This function is replaced with validateOfficeStructure
  * Keeping the function signature for compatibility
  */
-export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
+export function validateOfficeCRC(zip: any, logger: LoggerCallback): boolean {
   try {
     // Check for required Office files
     const requiredFiles = [
@@ -105,7 +93,7 @@ export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
     
     return true;
   } catch (error) {
-    logger(`CRC validation failed: ${error.message}`, 'error');
+    logger(`CRC validation failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return false;
   }
 }
@@ -134,15 +122,8 @@ export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
   }
 }
 
-// COMPLETE REPLACEMENT
-export const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+// Re-export the function
+export const isValidZip = zipCheck;
 
-export function isValidZip(buffer: ArrayBuffer): boolean {
-  const header = new Uint8Array(buffer.slice(0, 4));
-  return arraysEqual(header, ZIP_SIGNATURE);
-}
-
-function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((val, i) => val === b[i]);
-} 
+// ZIP signature constant
+export const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]); 

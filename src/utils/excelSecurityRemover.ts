@@ -1,5 +1,5 @@
 import { LoggerCallback } from './types';
-import { isValidZip } from './zipValidator';
+import { isValidZip } from './zip.js';
 import JSZip from 'jszip';
 
 /**
