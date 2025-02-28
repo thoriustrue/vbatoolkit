@@ -104,4 +104,6 @@ export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
       logger('Invalid workbook.xml: Missing root namespace declaration', 'error');
     }
   }
-} 
+}
+
+const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]); 
