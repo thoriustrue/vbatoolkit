@@ -971,3 +971,25 @@ function findPattern(data: Uint8Array, pattern: number[]): number {
   }
   return -1;
 }
+
+function auditBinaryChanges(original: Uint8Array, modified: Uint8Array, logger: LoggerCallback) {
+  const changes: string[] = [];
+  
+  for (let i = 0; i < Math.min(original.length, modified.length); i++) {
+    if (original[i] !== modified[i]) {
+      changes.push(
+        `0x${i.toString(16).padStart(6, '0')}: ` +
+        `0x${original[i].toString(16).padStart(2, '0')} → ` +
+        `0x${modified[i].toString(16).padStart(2, '0')}`
+      );
+      
+      if (changes.length > 50) break; // Limit output
+    }
+  }
+  
+  if (changes.length > 0) {
+    logger(`Binary modifications detected (first ${changes.length}):\n${changes.join('\n')}`, 'info');
+  } else {
+    logger('No binary modifications made', 'warning');
+  }
+}
