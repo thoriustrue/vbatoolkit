@@ -181,7 +181,9 @@ function App() {
     const fileExtension = '.' + fileName.split('.').pop();
     const newFileName = fileName.replace(fileExtension, `_unprotected${fileExtension}`);
     
-    const url = URL.createObjectURL(processedFile);
+    // Create Blob and download using native API
+    const blob = new Blob([processedFile], { type: 'application/vnd.ms-excel.sheet.macroEnabled' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = newFileName;

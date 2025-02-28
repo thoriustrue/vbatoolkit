@@ -78,7 +78,11 @@ export async function removeExcelSecurity(
       }
       
       // Update the file in the ZIP
-      zipData.file('xl/workbook.xml', workbookXml);
+      zipData.file('xl/workbook.xml', workbookXml, {
+        compression: 'DEFLATE',
+        unixPermissions: null,  // Important for Windows compatibility
+        comment: 'Modified by VBAToolkit'
+      });
     }
     
     // 2. Remove sheet protection from all worksheets
@@ -232,7 +236,11 @@ export async function removeExcelSecurity(
       }
       
       // Update the file in the ZIP
-      zipData.file('xl/workbook.xml', workbookXml);
+      zipData.file('xl/workbook.xml', workbookXml, {
+        compression: 'DEFLATE',
+        unixPermissions: null,  // Important for Windows compatibility
+        comment: 'Modified by VBAToolkit'
+      });
     }
     
     if (!securityRemoved) {
