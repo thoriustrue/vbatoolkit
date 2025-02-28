@@ -273,7 +273,143 @@ export async function fixFileIntegrity(
       }
     }
     
-    // 6. Remove any potentially corrupted files
+    // 6. Preserve all original files and directories
+    // This ensures we don't lose any components during processing
+    const allFiles = Object.keys(zip.files);
+    
+    // Check for missing critical directories
+    const criticalDirs = [
+      'xl/',
+      'xl/worksheets/',
+      'xl/_rels/',
+      '_rels/'
+    ];
+    
+    for (const dir of criticalDirs) {
+      if (!zip.files[dir]) {
+        // Create the directory if it's missing
+        zip.folder(dir);
+        logger(`Created missing directory: ${dir}`, 'info');
+      }
+    }
+    
+    // 7. Fix content types if needed
+    const contentTypesFile = zip.file('[Content_Types].xml');
+    if (contentTypesFile) {
+      let contentTypes = await contentTypesFile.async('string');
+      let modified = false;
+      
+      // Check for required content types
+      const requiredTypes = [
+        { part: 'workbook.xml', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml' },
+        { part: 'vbaProject.bin', type: 'application/vnd.ms-office.vbaProject' },
+        { extension: 'rels', type: 'application/vnd.openxmlformats-package.relationships+xml' },
+        { extension: 'xml', type: 'application/xml' }
+      ];
+      
+      for (const req of requiredTypes) {
+        if (req.part && !contentTypes.includes(`PartName="/${req.part.startsWith('xl/') ? '' : 'xl/'}${req.part}"`)) {
+          contentTypes = contentTypes.replace(
+            /<Types[^>]*>/,
+            `$&\n  <Override PartName="/${req.part.startsWith('xl/') ? '' : 'xl/'}${req.part}" ContentType="${req.type}"/>`
+          );
+          modified = true;
+          logger(`Added missing content type for ${req.part}`, 'info');
+        } else if (req.extension && !contentTypes.includes(`Extension="${req.extension}"`)) {
+          contentTypes = contentTypes.replace(
+            /<Types[^>]*>/,
+            `$&\n  <Default Extension="${req.extension}" ContentType="${req.type}"/>`
+          );
+          modified = true;
+          logger(`Added missing content type for extension .${req.extension}`, 'info');
+        }
+      }
+      
+      // Add worksheet content types if missing
+      for (const file of allFiles) {
+        if (file.startsWith('xl/worksheets/sheet') && file.endsWith('.xml')) {
+          const sheetPart = file.substring(3); // Remove 'xl/' prefix
+          if (!contentTypes.includes(`PartName="/${sheetPart}"`)) {
+            contentTypes = contentTypes.replace(
+              /<Types[^>]*>/,
+              `$&\n  <Override PartName="/${sheetPart}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+            );
+            modified = true;
+            logger(`Added missing content type for ${file}`, 'info');
+          }
+        }
+      }
+      
+      if (modified) {
+        zip.file('[Content_Types].xml', contentTypes);
+        logger('Updated content types file with missing entries', 'success');
+      }
+    }
+    
+    // 8. Fix workbook relationships if needed
+    const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels');
+    if (workbookRelsFile) {
+      let workbookRels = await workbookRelsFile.async('string');
+      let modified = false;
+      
+      // Check for VBA project relationship
+      if (!workbookRels.includes('vnd.ms-office.vbaProject') && zip.file('xl/vbaProject.bin')) {
+        // Generate a unique rId
+        let maxRid = 0;
+        const ridMatches = workbookRels.match(/Id="rId(\d+)"/g);
+        if (ridMatches) {
+          for (const match of ridMatches) {
+            const ridNum = parseInt(match.replace(/Id="rId(\d+)"/, '$1'));
+            if (ridNum > maxRid) {
+              maxRid = ridNum;
+            }
+          }
+        }
+        
+        const newRid = `rId${maxRid + 1}`;
+        workbookRels = workbookRels.replace(
+          /<Relationships[^>]*>/,
+          `$&\n  <Relationship Id="${newRid}" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/>`
+        );
+        modified = true;
+        logger('Added missing VBA project relationship', 'info');
+      }
+      
+      // Check for worksheet relationships
+      for (const file of allFiles) {
+        if (file.startsWith('xl/worksheets/sheet') && file.endsWith('.xml')) {
+          const sheetName = file.replace('xl/worksheets/', '');
+          if (!workbookRels.includes(`Target="worksheets/${sheetName}"`)) {
+            // Generate a unique rId
+            let maxRid = 0;
+            const ridMatches = workbookRels.match(/Id="rId(\d+)"/g);
+            if (ridMatches) {
+              for (const match of ridMatches) {
+                const ridNum = parseInt(match.replace(/Id="rId(\d+)"/, '$1'));
+                if (ridNum > maxRid) {
+                  maxRid = ridNum;
+                }
+              }
+            }
+            
+            const newRid = `rId${maxRid + 1}`;
+            workbookRels = workbookRels.replace(
+              /<Relationships[^>]*>/,
+              `$&\n  <Relationship Id="${newRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/${sheetName}"/>`
+            );
+            modified = true;
+            logger(`Added missing relationship for ${sheetName}`, 'info');
+          }
+        }
+      }
+      
+      if (modified) {
+        zip.file('xl/_rels/workbook.xml.rels', workbookRels);
+        logger('Updated workbook relationships file with missing entries', 'success');
+      }
+    }
+    
+    // 9. Remove any potentially corrupted files
     const knownCorruptPatterns = [
       'xl/ctrlProps/',
       'xl/activeX/'
@@ -313,7 +449,7 @@ export async function fixFileIntegrity(
     logger('Advanced file integrity fixes applied', 'success');
     return zip;
   } catch (error) {
-    logger(`Error fixing file integrity: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    return zip; // Return original zip even if fixes fail
+    logger(`Error during file integrity fix: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return zip;
   }
 } 

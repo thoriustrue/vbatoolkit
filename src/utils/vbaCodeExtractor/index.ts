@@ -45,19 +45,31 @@ export async function extractVBACode(
     logger('VBA project found in the workbook.', 'success');
     progressCallback(40);
     
-    // Try to extract VBA modules using SheetJS
+    // Try to extract VBA modules using multiple methods
     let modules: VBAModule[] = [];
+    let extractionSuccess = false;
     
     // First attempt: Use SheetJS's built-in VBA extraction
     if (workbook.Workbook?.VBAProject) {
       logger('Extracting VBA modules using primary method...', 'info');
       modules = extractVBAModulesFromWorkbook(workbook, logger);
+      
+      if (modules.length > 0) {
+        logger(`Successfully extracted ${modules.length} modules using primary method`, 'success');
+        extractionSuccess = true;
+      }
     }
     
     // If that didn't work, try alternative methods
     if (modules.length === 0) {
       logger('Primary extraction method failed. Trying alternative method...', 'info');
       modules = await extractVBAModulesAlternative(workbook, arrayBuffer, logger);
+      
+      if (modules.length > 0) {
+        logger(`Successfully extracted ${modules.length} modules using alternative method`, 'info');
+        // Mark as partial success since we only got module names
+        extractionSuccess = true;
+      }
     }
     
     if (modules.length === 0) {
@@ -65,18 +77,38 @@ export async function extractVBACode(
       return { modules: [], success: false };
     }
     
+    progressCallback(70);
+    
     // Clean and decode the extracted modules
     modules = modules.map(module => ({
       ...module,
       code: cleanAndDecodeVBACode(module.code)
     }));
     
-    logger(`Successfully extracted ${modules.length} VBA module(s).`, 'success');
+    // Sort modules by type and name for better organization
+    modules.sort((a, b) => {
+      // First sort by type priority
+      const typePriority = {
+        [VBAModuleType.Document]: 1,
+        [VBAModuleType.Class]: 2,
+        [VBAModuleType.Form]: 3,
+        [VBAModuleType.Standard]: 4,
+        [VBAModuleType.Unknown]: 5
+      };
+      
+      const typeCompare = typePriority[a.type] - typePriority[b.type];
+      if (typeCompare !== 0) return typeCompare;
+      
+      // Then sort by name
+      return a.name.localeCompare(b.name);
+    });
+    
+    logger(`VBA code extraction completed. Found ${modules.length} modules.`, 'success');
     progressCallback(100);
     
-    return { modules, success: true };
+    return { modules, success: extractionSuccess };
   } catch (error) {
-    logger(`Error extracting VBA code: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    logger(`Error during VBA code extraction: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return { modules: [], success: false };
   }
 }

@@ -148,7 +148,7 @@ export async function removeVBAPassword(
     const modifiedFile = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
-      compressionOptions: { level: 6 }, // Reduced from 9 to prevent over-compression
+      compressionOptions: { level: 4 }, // Reduced from 6 to prevent over-compression
       mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
     });
     
@@ -182,7 +182,7 @@ export async function removeVBAPassword(
           return await zip.generateAsync({ 
             type: 'blob',
             compression: 'DEFLATE',
-            compressionOptions: { level: 5 }, // Even more conservative compression
+            compressionOptions: { level: 3 }, // Even more conservative compression
             mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
           });
         } catch (secondError) {
@@ -231,7 +231,7 @@ async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Prom
   // Ensure the Content_Types file has all necessary entries
   const contentTypesFile = zip.file('[Content_Types].xml');
   if (contentTypesFile) {
-    const contentTypes = await contentTypesFile.async('string');
+    let contentTypes = await contentTypesFile.async('string');
     
     // Check for critical content types
     const criticalContentTypes = [
@@ -244,11 +244,52 @@ async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Prom
     for (const type of criticalContentTypes) {
       if (!contentTypes.includes(type)) {
         missingTypes.push(type);
+        
+        // Add the missing content type
+        if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml') {
+          contentTypes = contentTypes.replace(
+            /<Types[^>]*>/,
+            `$&\n  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
+          );
+          logger(`Added missing content type: ${type}`, 'info');
+        } else if (type === 'application/vnd.ms-office.vbaProject') {
+          contentTypes = contentTypes.replace(
+            /<Types[^>]*>/,
+            `$&\n  <Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/>`
+          );
+          logger(`Added missing content type: ${type}`, 'info');
+        } else if (type === 'application/vnd.openxmlformats-package.relationships+xml') {
+          contentTypes = contentTypes.replace(
+            /<Types[^>]*>/,
+            `$&\n  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`
+          );
+          logger(`Added missing content type: ${type}`, 'info');
+        }
       }
     }
     
+    // Update the content types file
+    zip.file('[Content_Types].xml', contentTypes);
+    
     if (missingTypes.length > 0) {
-      logger(`Warning: Missing content types: ${missingTypes.join(', ')}`, 'warning');
+      logger(`Fixed missing content types: ${missingTypes.join(', ')}`, 'success');
+    }
+  }
+  
+  // Ensure all required relationships are present
+  const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels');
+  if (workbookRelsFile) {
+    let workbookRels = await workbookRelsFile.async('string');
+    
+    // Check if vbaProject relationship exists
+    if (!workbookRels.includes('vnd.ms-office.vbaProject')) {
+      // Add the relationship if it doesn't exist
+      workbookRels = workbookRels.replace(
+        /<\?xml[^>]*\?>\s*<Relationships[^>]*>/,
+        `$&\n  <Relationship Id="rId9999" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/>`
+      );
+      zip.file('xl/_rels/workbook.xml.rels', workbookRels);
+      logger('Added missing VBA project relationship', 'info');
     }
   }
   
@@ -293,6 +334,7 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
       
       let protectionFound = false;
       
+      // Search for all possible protection patterns
       for (let i = projectInfoOffset; i < projectInfoOffset + searchRange; i++) {
         // Protection record often has this pattern
         if (data[i] === 0x13 && data[i+1] === 0x00 && data[i+2] === 0x01 && data[i+3] === 0x00) {
@@ -300,7 +342,6 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
           data[i+2] = 0x00; // Change 0x01 to 0x00 to disable protection
           logger(`Modified protection record at offset ${i}`, 'info');
           protectionFound = true;
-          break;
         }
         
         // Alternative protection pattern
@@ -308,7 +349,13 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
           data[i+2] = 0x00; // Change 0x02 to 0x00
           logger(`Modified alternative protection record at offset ${i}`, 'info');
           protectionFound = true;
-          break;
+        }
+        
+        // Another common protection pattern
+        if (data[i] === 0x13 && data[i+1] === 0x00 && data[i+2] === 0x11 && data[i+3] === 0x00) {
+          data[i+2] = 0x00; // Change 0x11 to 0x00
+          logger(`Modified extended protection record at offset ${i}`, 'info');
+          protectionFound = true;
         }
       }
       
@@ -325,7 +372,6 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
                 data[j+2] = 0x00; // Disable protection
                 logger(`Modified extended protection record at offset ${j}`, 'info');
                 protectionFound = true;
-                break;
               }
             }
           }
@@ -350,7 +396,11 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
         // Found PROJECTLOCKED record, modify it
         if (i + lockedSignature.length + 10 < data.length) {
           // Set the locked flag to 0
-          data[i + lockedSignature.length + 2] = 0x00;
+          for (let j = i + lockedSignature.length; j < i + lockedSignature.length + 10; j++) {
+            if (data[j] === 0x01) {
+              data[j] = 0x00;
+            }
+          }
           logger(`Modified PROJECTLOCKED record at offset ${lockedOffset}`, 'info');
         }
         break;
@@ -367,12 +417,13 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
           break;
         }
       }
-      if (match && i + 10 < data.length) {
+      if (match && i + 20 < data.length) {
         // Found CMG record, check if it's followed by protection bytes
-        if (data[i + 6] === 0x01 || data[i + 8] === 0x01) {
-          data[i + 6] = 0x00;
-          data[i + 8] = 0x00;
-          logger(`Modified CMG protection record at offset ${i}`, 'info');
+        for (let j = i + 3; j < i + 20; j++) {
+          if (data[j] === 0x01) {
+            data[j] = 0x00;
+            logger(`Modified CMG protection record at offset ${j}`, 'info');
+          }
         }
       }
     }
@@ -387,12 +438,41 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
           break;
         }
       }
-      if (match && i + 10 < data.length) {
+      if (match && i + 20 < data.length) {
         // Found DPB record, check if it's followed by protection bytes
-        if (data[i + 6] === 0x01 || data[i + 8] === 0x01) {
-          data[i + 6] = 0x00;
-          data[i + 8] = 0x00;
-          logger(`Modified DPB protection record at offset ${i}`, 'info');
+        for (let j = i + 3; j < i + 20; j++) {
+          if (data[j] === 0x01) {
+            data[j] = 0x00;
+            logger(`Modified DPB protection record at offset ${j}`, 'info');
+          }
+        }
+      }
+    }
+    
+    // Search for and modify any remaining protection bytes
+    const protectionSignatures = [
+      [0x44, 0x50, 0x78], // "DPx"
+      [0x43, 0x4D, 0x78], // "CMx"
+      [0x56, 0x42, 0x41, 0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74], // "VBAProtect"
+    ];
+    
+    for (const signature of protectionSignatures) {
+      for (let i = 0; i < data.length - signature.length; i++) {
+        let match = true;
+        for (let j = 0; j < signature.length; j++) {
+          if (data[i + j] !== signature[j]) {
+            match = false;
+            break;
+          }
+        }
+        if (match && i + signature.length + 10 < data.length) {
+          // Found protection signature, modify nearby bytes
+          for (let j = i + signature.length; j < i + signature.length + 10; j++) {
+            if (data[j] === 0x01) {
+              data[j] = 0x00;
+              logger(`Modified additional protection record at offset ${j}`, 'info');
+            }
+          }
         }
       }
     }
