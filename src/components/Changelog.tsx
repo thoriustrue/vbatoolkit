@@ -42,74 +42,24 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
   }
 ];
 
-export function Changelog() {
+export function Changelog({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [expandedVersions, setExpandedVersions] = useState<string[]>([CHANGELOG_DATA[0]?.version || '']);
-  
-  const toggleVersion = (version: string) => {
-    setExpandedVersions(prev => 
-      prev.includes(version) 
-        ? prev.filter(v => v !== version) 
-        : [...prev, version]
-    );
-  };
-  
+
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div 
-        className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
+    <details className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+      <summary 
+        className="flex items-center cursor-pointer list-none"
+        onClick={(e) => {
+          e.preventDefault();
+          setIsOpen(!isOpen);
+        }}
       >
-        <div className="flex items-center">
-          <Clock className="mr-2 text-gray-600" size={18} />
-          <h2 className="text-lg font-medium">Changelog</h2>
-        </div>
-        {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        <span className="ml-2">Version History</span>
+      </summary>
+      <div className="ml-6 mt-2 space-y-2">
+        {children}
       </div>
-      
-      {isOpen && (
-        <div className="p-4 max-h-96 overflow-y-auto">
-          {CHANGELOG_DATA.map(entry => (
-            <div key={entry.version} className="mb-4 last:mb-0">
-              <div 
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => toggleVersion(entry.version)}
-              >
-                <div className="flex items-center">
-                  <Tag className="mr-2 text-blue-600" size={16} />
-                  <h3 className="text-md font-medium">Version {entry.version}</h3>
-                  <span className="ml-2 text-sm text-gray-500">{entry.date}</span>
-                </div>
-                {expandedVersions.includes(entry.version) ? 
-                  <ChevronUp size={16} /> : 
-                  <ChevronDown size={16} />
-                }
-              </div>
-              
-              {expandedVersions.includes(entry.version) && (
-                <div className="mt-2 pl-6 border-l-2 border-gray-200">
-                  <ul className="space-y-2">
-                    {entry.changes.map((change, idx) => (
-                      <li key={idx} className="flex">
-                        <span className={`
-                          inline-block w-16 text-xs font-medium rounded px-2 py-1 mr-2 text-center
-                          ${change.type === 'added' ? 'bg-green-100 text-green-800' : ''}
-                          ${change.type === 'changed' ? 'bg-blue-100 text-blue-800' : ''}
-                          ${change.type === 'fixed' ? 'bg-yellow-100 text-yellow-800' : ''}
-                          ${change.type === 'removed' ? 'bg-red-100 text-red-800' : ''}
-                        `}>
-                          {change.type}
-                        </span>
-                        <span>{change.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </details>
   );
 } 

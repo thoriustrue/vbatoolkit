@@ -5,6 +5,7 @@ import { extractVBACode, VBAModule, createVBACodeFile } from './utils/vbaCodeExt
 import { injectVBACode } from './utils/vbaCodeInjector';
 import { ErrorBoundary, ErrorLogPanel, useErrorLogger } from './components/ErrorLogger';
 import { Changelog } from './components/Changelog';
+import { ErrorLog } from './components/ErrorLog';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -227,9 +228,13 @@ function App() {
     }
   };
 
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+  }, []);
+
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gray-50 p-4">
         <header className="bg-white shadow-sm">
           <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center">
             <Upload className="h-8 w-8 text-indigo-600 mr-3" />
@@ -557,13 +562,20 @@ function App() {
           </div>
         </main>
         
-        <footer className="bg-white">
-          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-            <p className="text-center text-sm text-gray-500">
-              Excel VBA Tools - Client-side tools for working with VBA projects in Excel files
-            </p>
-          </div>
+        <footer className="mt-auto p-4 border-t border-gray-200 dark:border-gray-700">
+          <Changelog>
+            <div className="space-y-2">
+              <h3 className="font-medium">v0.1.1 - 2024-06-20</h3>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>Added VBA password removal functionality</li>
+                <li>Implemented macro auto-enable features</li>
+                <li>Added error logging system</li>
+              </ul>
+            </div>
+          </Changelog>
         </footer>
+        
+        <ErrorLog logs={logs} onClear={clearLogs} />
         
         {/* Add Changelog in a collapsible panel */}
         <div className="mt-8">
