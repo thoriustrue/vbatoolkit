@@ -46,10 +46,16 @@ export async function removeVBAPassword(
       throw new Error('Failed to remove VBA password');
     }
     
+    // Validate and update VBA project checksum
+    const finalVba = updateVBAProjectChecksum(modifiedVba, logger);
+    if (!finalVba) {
+      throw new Error('Failed to update VBA project checksum');
+    }
+    
     progressCallback(0.6);
     
     // Replace the vbaProject.bin with the modified version
-    zip.file('xl/vbaProject.bin', modifiedVba);
+    zip.file('xl/vbaProject.bin', finalVba);
     
     logger('Auto-enabling macros and external links...', 'info');
     
@@ -74,9 +80,47 @@ export async function removeVBAPassword(
       zip.file('xl/workbook.xml', workbookContent);
     }
     
+    // Remove digital signatures if present
+    if (zip.file('_xmlsignatures/sig1.xml')) {
+      zip.remove('_xmlsignatures/sig1.xml');
+      logger('Removed digital signature', 'info');
+    }
+    
+    // Remove any signature relationships
+    const relsFile = zip.file('_rels/.rels');
+    if (relsFile) {
+      let relsContent = await relsFile.async('string');
+      if (relsContent.includes('relationships/digital-signature')) {
+        relsContent = relsContent.replace(
+          /<Relationship[^>]*relationships\/digital-signature[^>]*\/>/g,
+          ''
+        );
+        zip.file('_rels/.rels', relsContent);
+        logger('Removed signature relationships', 'info');
+      }
+    }
+    
+    // Remove vbaProjectSignature if present
+    if (zip.file('xl/vbaProjectSignature.bin')) {
+      zip.remove('xl/vbaProjectSignature.bin');
+      logger('Removed VBA project signature', 'info');
+    }
+    
+    if (zip.file('xl/_rels/vbaProject.bin.rels')) {
+      let vbaRels = await zip.file('xl/_rels/vbaProject.bin.rels').async('string');
+      if (vbaRels.includes('vbaProjectSignature')) {
+        vbaRels = vbaRels.replace(
+          /<Relationship[^>]*vbaProjectSignature[^>]*\/>/g,
+          ''
+        );
+        zip.file('xl/_rels/vbaProject.bin.rels', vbaRels);
+        logger('Cleaned VBA project relationships', 'info');
+      }
+    }
+    
     progressCallback(0.8);
     
-    // Generate the modified file
+    // Generate the modified file with proper MIME type and compression
     const modifiedFile = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
@@ -134,6 +178,23 @@ function removeVBAProjectPassword(vbaData: Uint8Array, logger: LoggerCallback): 
         }
       }
       
+      // Look for CMG marker (another common protection indicator)
+      const cmgSignature = [0x43, 0x4D, 0x47]; // "CMG" in ASCII
+      for (let i = 0; i < data.length - cmgSignature.length; i++) {
+        if (data[i] === cmgSignature[0] && 
+            data[i + 1] === cmgSignature[1] && 
+            data[i + 2] === cmgSignature[2]) {
+          // Found CMG marker, modify protection bytes
+          if (i + 8 < data.length) {
+            data[i + 6] = 0x00;
+            data[i + 7] = 0x00;
+            data[i + 8] = 0x00;
+            logger('Found and removed CMG protection flags', 'info');
+            return data;
+          }
+        }
+      }
+      
       logger('No password protection found in VBA project', 'info');
       return data; // Return original if no protection found
     }
@@ -154,6 +215,37 @@ function removeVBAProjectPassword(vbaData: Uint8Array, logger: LoggerCallback): 
     return data;
   } catch (error) {
     logger(`Error removing VBA password: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return null;
+  }
+}
+
+// Function to update VBA project checksum
+function updateVBAProjectChecksum(vbaData: Uint8Array, logger: LoggerCallback): Uint8Array | null {
+  try {
+    // VBA projects have a 4-byte checksum at offset 4
+    if (vbaData.length < 8) {
+      logger('Invalid vbaProject.bin: File too small', 'error');
+      return null;
+    }
+    
+    // Create a copy of the data to modify
+    const data = new Uint8Array(vbaData);
+    const view = new DataView(data.buffer);
+    
+    // Calculate new checksum
+    let calculatedChecksum = 0;
+    for (let i = 8; i < data.length; i++) {
+      calculatedChecksum += data[i];
+      calculatedChecksum &= 0xFFFFFFFF; // Keep it 32-bit
+    }
+    
+    // Update the checksum in the file
+    view.setUint32(4, calculatedChecksum, true); // true for little-endian
+    
+    logger(`Updated VBA project checksum to ${calculatedChecksum}`, 'info');
+    return data;
+  } catch (error) {
+    logger(`Error updating VBA checksum: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return null;
   }
 }
