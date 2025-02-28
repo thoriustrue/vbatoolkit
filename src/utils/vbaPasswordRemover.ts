@@ -606,6 +606,113 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
       }
     }
     
+    // Search for specific security markers as outlined in the technical roadmap
+    
+    // 1. Search for "DPB=" marker (Denotes a protected project descriptor)
+    const dpbMarker = [0x44, 0x50, 0x42, 0x3D]; // "DPB=" in ASCII
+    for (let i = 0; i < data.length - dpbMarker.length; i++) {
+      let match = true;
+      for (let j = 0; j < dpbMarker.length; j++) {
+        if (data[i + j] !== dpbMarker[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        // Found DPB marker, zero out the next 5 bytes
+        for (let j = 0; j < 5; j++) {
+          if (i + dpbMarker.length + j < data.length) {
+            data[i + dpbMarker.length + j] = 0x00;
+          }
+        }
+        logger(`Zeroed out DPB= protection marker at offset ${i}`, 'info');
+      }
+    }
+    
+    // 2. Search for "MSDPB" marker (Microsoft's encrypted password flag)
+    const msdpbMarker = [0x4D, 0x53, 0x44, 0x50, 0x42]; // "MSDPB" in ASCII
+    for (let i = 0; i < data.length - msdpbMarker.length; i++) {
+      let match = true;
+      for (let j = 0; j < msdpbMarker.length; j++) {
+        if (data[i + j] !== msdpbMarker[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        // Found MSDPB marker, zero out the next 5 bytes
+        for (let j = 0; j < 5; j++) {
+          if (i + msdpbMarker.length + j < data.length) {
+            data[i + msdpbMarker.length + j] = 0x00;
+          }
+        }
+        logger(`Zeroed out MSDPB protection marker at offset ${i}`, 'info');
+      }
+    }
+    
+    // 3. Search for "CMG=" marker (Checksum and security validation field)
+    const cmgMarker = [0x43, 0x4D, 0x47, 0x3D]; // "CMG=" in ASCII
+    for (let i = 0; i < data.length - cmgMarker.length; i++) {
+      let match = true;
+      for (let j = 0; j < cmgMarker.length; j++) {
+        if (data[i + j] !== cmgMarker[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        // Found CMG marker, zero out the next 5 bytes
+        for (let j = 0; j < 5; j++) {
+          if (i + cmgMarker.length + j < data.length) {
+            data[i + cmgMarker.length + j] = 0x00;
+          }
+        }
+        logger(`Zeroed out CMG= protection marker at offset ${i}`, 'info');
+      }
+    }
+    
+    // 4. Search for "GC=" marker (Security validation field)
+    const gcMarker = [0x47, 0x43, 0x3D]; // "GC=" in ASCII
+    for (let i = 0; i < data.length - gcMarker.length; i++) {
+      let match = true;
+      for (let j = 0; j < gcMarker.length; j++) {
+        if (data[i + j] !== gcMarker[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        // Found GC marker, zero out the next 5 bytes
+        for (let j = 0; j < 5; j++) {
+          if (i + gcMarker.length + j < data.length) {
+            data[i + gcMarker.length + j] = 0x00;
+          }
+        }
+        logger(`Zeroed out GC= protection marker at offset ${i}`, 'info');
+      }
+    }
+    
+    // 5. Search for "PC=" marker (Security validation field)
+    const pcMarker = [0x50, 0x43, 0x3D]; // "PC=" in ASCII
+    for (let i = 0; i < data.length - pcMarker.length; i++) {
+      let match = true;
+      for (let j = 0; j < pcMarker.length; j++) {
+        if (data[i + j] !== pcMarker[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        // Found PC marker, zero out the next 5 bytes
+        for (let j = 0; j < 5; j++) {
+          if (i + pcMarker.length + j < data.length) {
+            data[i + pcMarker.length + j] = 0x00;
+          }
+        }
+        logger(`Zeroed out PC= protection marker at offset ${i}`, 'info');
+      }
+    }
+    
     // Preserve the PROJECTLOCKED record if it exists
     const lockedSignature = [0x50, 0x52, 0x4F, 0x4A, 0x45, 0x43, 0x54, 0x4C, 0x4F, 0x43, 0x4B, 0x45, 0x44]; // "PROJECTLOCKED"
     let lockedOffset = -1;

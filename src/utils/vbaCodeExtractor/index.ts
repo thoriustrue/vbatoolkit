@@ -1,10 +1,11 @@
 import { readWorkbook } from '../xlsxWrapper';
 import { LoggerCallback, ProgressCallback } from '../../types';
-import { extractVBAModulesFromWorkbook } from './moduleExtractor';
+import { extractVBAModulesFromWorkbook, extractVBAModulesFromBinary, extractCodeFromModules } from './moduleExtractor';
 import { extractVBAModulesAlternative } from './alternativeExtractor';
 import { cleanAndDecodeVBACode } from './codeDecoder';
 import { readFileAsArrayBuffer } from '../fileUtils';
 import { VBAModule, VBAModuleType } from './types';
+import * as XLSX from 'xlsx';
 
 /**
  * Extracts VBA code from an Excel file
@@ -152,6 +153,125 @@ export function createProcessLogsFile(logs: string[], processType: string): Blob
   });
   
   return new Blob([content], { type: 'text/plain' });
+}
+
+/**
+ * Extracts VBA code modules from an Excel file
+ * @param workbook The XLSX workbook
+ * @param rawFileData The raw file data as Uint8Array
+ * @param logger Callback function for logging messages
+ * @returns Array of VBA modules
+ */
+export async function extractVBAModules(
+  workbook: XLSX.WorkBook,
+  rawFileData: Uint8Array,
+  logger: LoggerCallback
+): Promise<VBAModule[]> {
+  try {
+    logger('Starting VBA code extraction process...', 'info');
+    
+    // Track extraction success
+    let extractionSuccess = false;
+    let modules: VBAModule[] = [];
+    
+    // Method 1: Try to extract modules from workbook
+    logger('Attempting primary extraction method...', 'info');
+    modules = extractVBAModulesFromWorkbook(workbook, logger);
+    
+    if (modules.length > 0 && modules.some(m => m.extractionSuccess)) {
+      logger(`Successfully extracted ${modules.length} modules using primary method`, 'success');
+      extractionSuccess = true;
+    } else {
+      logger('Primary extraction method did not yield complete results, trying alternative methods...', 'info');
+      
+      // Method 2: Try to extract modules from binary data
+      if (workbook.vbaraw) {
+        logger('Attempting extraction from VBA binary data...', 'info');
+        const vbaData = new Uint8Array(workbook.vbaraw);
+        
+        // First try to extract module names
+        const binaryModules = extractVBAModulesFromBinary(vbaData, logger);
+        
+        if (binaryModules.length > 0) {
+          // Then try to extract code for each module
+          const modulesWithCode = extractCodeFromModules(vbaData, binaryModules, logger);
+          
+          if (modulesWithCode.some(m => m.extractionSuccess)) {
+            modules = modulesWithCode;
+            logger(`Successfully extracted ${modulesWithCode.filter(m => m.extractionSuccess).length} modules using binary extraction`, 'success');
+            extractionSuccess = true;
+          } else {
+            // Keep the module names at least
+            modules = binaryModules;
+            logger(`Extracted ${binaryModules.length} module names, but could not extract code`, 'warning');
+          }
+        }
+      }
+      
+      // Method 3: Try alternative extraction method
+      if (!extractionSuccess) {
+        logger('Attempting alternative extraction method...', 'info');
+        const alternativeModules = await extractVBAModulesAlternative(workbook, rawFileData, logger);
+        
+        if (alternativeModules.length > 0) {
+          // If we already have module names but no code, merge the results
+          if (modules.length > 0 && !modules.some(m => m.extractionSuccess)) {
+            // Create a map of existing modules
+            const moduleMap = new Map<string, VBAModule>();
+            for (const module of modules) {
+              moduleMap.set(module.name.toLowerCase(), module);
+            }
+            
+            // Add any new modules from alternative extraction
+            for (const altModule of alternativeModules) {
+              const existingModule = moduleMap.get(altModule.name.toLowerCase());
+              
+              if (!existingModule) {
+                modules.push(altModule);
+              } else if (!existingModule.extractionSuccess && altModule.extractionSuccess) {
+                // Update existing module with better code
+                existingModule.code = altModule.code;
+                existingModule.extractionSuccess = altModule.extractionSuccess;
+              }
+            }
+            
+            logger(`Combined results from multiple extraction methods, total modules: ${modules.length}`, 'info');
+          } else {
+            // Just use the alternative modules
+            modules = alternativeModules;
+            logger(`Extracted ${alternativeModules.length} modules using alternative method`, 'success');
+          }
+          
+          extractionSuccess = modules.some(m => m.extractionSuccess);
+        }
+      }
+    }
+    
+    // Sort modules by type and name for better organization
+    modules.sort((a, b) => {
+      // First sort by type
+      if (a.type !== b.type) {
+        return a.type - b.type;
+      }
+      // Then sort by name
+      return a.name.localeCompare(b.name);
+    });
+    
+    // Final status message
+    if (modules.length === 0) {
+      logger('No VBA modules could be extracted from this workbook', 'warning');
+    } else if (!extractionSuccess) {
+      logger(`Found ${modules.length} VBA modules, but could not extract code content`, 'warning');
+    } else {
+      const successCount = modules.filter(m => m.extractionSuccess).length;
+      logger(`Successfully extracted ${successCount} out of ${modules.length} VBA modules`, 'success');
+    }
+    
+    return modules;
+  } catch (error) {
+    logger(`Error during VBA code extraction: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return [];
+  }
 }
 
 // Re-export types

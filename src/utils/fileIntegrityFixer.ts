@@ -153,7 +153,11 @@ export async function fixFileIntegrity(
           // Check for required namespaces
           const requiredNamespaces = [
             { prefix: 'xmlns', uri: 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' },
-            { prefix: 'xmlns:r', uri: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships' }
+            { prefix: 'xmlns:r', uri: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships' },
+            { prefix: 'xmlns:mc', uri: 'http://schemas.openxmlformats.org/markup-compatibility/2006' },
+            { prefix: 'xmlns:x', uri: 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' },
+            { prefix: 'mc:Ignorable', uri: 'x14ac xr xr2 xr3' },
+            { prefix: 'xmlns:x14ac', uri: 'http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac' }
           ];
           
           for (const ns of requiredNamespaces) {
@@ -164,11 +168,13 @@ export async function fixFileIntegrity(
             }
           }
           
-          // Ensure workbookPr exists
+          // Ensure workbookPr exists with proper attributes
           let workbookPr = doc.getElementsByTagName('workbookPr')[0];
           if (!workbookPr) {
             workbookPr = doc.createElement('workbookPr');
             workbookPr.setAttribute('codeName', 'ThisWorkbook');
+            workbookPr.setAttribute('defaultThemeVersion', '124226');
+            workbookPr.setAttribute('date1904', 'false');
             
             // Insert after fileVersion if it exists, otherwise as first child
             const fileVersion = doc.getElementsByTagName('fileVersion')[0];
@@ -179,21 +185,49 @@ export async function fixFileIntegrity(
             }
             
             modified = true;
-            logger('Added missing workbookPr element', 'info');
+            logger('Added missing workbookPr element with required attributes', 'info');
           } else {
-            // Ensure codeName attribute exists
-            if (!workbookPr.hasAttribute('codeName')) {
-              workbookPr.setAttribute('codeName', 'ThisWorkbook');
+            // Ensure required attributes exist
+            const requiredAttrs = [
+              { name: 'codeName', value: 'ThisWorkbook' },
+              { name: 'defaultThemeVersion', value: '124226' },
+              { name: 'date1904', value: 'false' }
+            ];
+            
+            for (const attr of requiredAttrs) {
+              if (!workbookPr.hasAttribute(attr.name)) {
+                workbookPr.setAttribute(attr.name, attr.value);
+                modified = true;
+                logger(`Added missing ${attr.name} attribute to workbookPr`, 'info');
+              }
+            }
+          }
+          
+          // Ensure bookViews exists
+          let bookViews = doc.getElementsByTagName('bookViews')[0];
+          if (!bookViews) {
+            bookViews = doc.createElement('bookViews');
+            const workbookView = doc.createElement('workbookView');
+            workbookView.setAttribute('xWindow', '0');
+            workbookView.setAttribute('yWindow', '0');
+            workbookView.setAttribute('windowWidth', '16384');
+            workbookView.setAttribute('windowHeight', '8192');
+            bookViews.appendChild(workbookView);
+            
+            // Insert after workbookPr
+            if (workbookPr && workbookPr.parentNode) {
+              workbookPr.parentNode.insertBefore(bookViews, workbookPr.nextSibling);
               modified = true;
-              logger('Added missing codeName attribute to workbookPr', 'info');
+              logger('Added missing bookViews element', 'info');
             }
           }
         }
         
-        // Check for duplicate sheet IDs
+        // Check for duplicate sheet IDs and ensure proper sheet structure
         const sheets = doc.getElementsByTagName('sheet');
         const usedIds = new Set();
         const usedNames = new Set();
+        const usedRIds = new Set();
         
         for (let i = 0; i < sheets.length; i++) {
           let sheetId = sheets[i].getAttribute('sheetId');
@@ -202,29 +236,79 @@ export async function fixFileIntegrity(
           
           // Fix missing r:id attribute
           if (!rId) {
-            sheets[i].setAttribute('r:id', `rId${i + 1}`);
+            rId = `rId${i + 1}`;
+            sheets[i].setAttribute('r:id', rId);
             modified = true;
-            logger(`Added missing r:id attribute to sheet ${name}`, 'info');
+            logger(`Added missing r:id attribute to sheet ${name || i + 1}`, 'info');
           }
           
+          // Fix missing name attribute
+          if (!name) {
+            name = `Sheet${i + 1}`;
+            sheets[i].setAttribute('name', name);
+            modified = true;
+            logger(`Added missing name attribute to sheet ${i + 1}`, 'info');
+          }
+          
+          // Fix missing sheetId attribute
+          if (!sheetId) {
+            sheetId = (i + 1).toString();
+            sheets[i].setAttribute('sheetId', sheetId);
+            modified = true;
+            logger(`Added missing sheetId attribute to sheet ${name}`, 'info');
+          }
+          
+          // Fix duplicate ID
           if (usedIds.has(sheetId)) {
-            // Duplicate ID found, generate a new one
-            const newId = (i + 1).toString();
-            sheets[i].setAttribute('sheetId', newId);
+            // Find next available ID
+            let newId = parseInt(sheetId);
+            while (usedIds.has(newId.toString())) {
+              newId++;
+            }
+            sheets[i].setAttribute('sheetId', newId.toString());
             modified = true;
-            logger(`Fixed duplicate sheetId for ${name}`, 'info');
+            logger(`Fixed duplicate sheetId for ${name}: ${sheetId} -> ${newId}`, 'info');
+            sheetId = newId.toString();
           }
           
+          // Fix duplicate name
           if (usedNames.has(name)) {
-            // Duplicate name found, generate a new one
-            const newName = `Sheet${i + 1}`;
+            // Generate a unique name
+            let baseName = name.replace(/\d+$/, '');
+            let counter = 1;
+            let newName = `${baseName}${counter}`;
+            
+            while (usedNames.has(newName)) {
+              counter++;
+              newName = `${baseName}${counter}`;
+            }
+            
             sheets[i].setAttribute('name', newName);
             modified = true;
             logger(`Fixed duplicate sheet name: ${name} -> ${newName}`, 'info');
+            name = newName;
           }
           
-          usedIds.add(sheets[i].getAttribute('sheetId'));
-          usedNames.add(sheets[i].getAttribute('name'));
+          // Fix duplicate r:id
+          if (usedRIds.has(rId)) {
+            // Generate a unique r:id
+            let newRId = `rId${i + 100}`; // Use high numbers to avoid conflicts
+            sheets[i].setAttribute('r:id', newRId);
+            modified = true;
+            logger(`Fixed duplicate r:id for ${name}: ${rId} -> ${newRId}`, 'info');
+            rId = newRId;
+          }
+          
+          // Add state attribute if missing
+          if (!sheets[i].hasAttribute('state')) {
+            sheets[i].setAttribute('state', 'visible');
+            modified = true;
+            logger(`Added missing state attribute to sheet ${name}`, 'info');
+          }
+          
+          usedIds.add(sheetId);
+          usedNames.add(name);
+          usedRIds.add(rId);
         }
         
         // Ensure sheets element exists and has at least one sheet
@@ -237,13 +321,18 @@ export async function fixFileIntegrity(
             newSheet.setAttribute('name', 'Sheet1');
             newSheet.setAttribute('sheetId', '1');
             newSheet.setAttribute('r:id', 'rId1');
+            newSheet.setAttribute('state', 'visible');
             newSheetsElement.appendChild(newSheet);
             
-            // Insert after workbookPr
+            // Insert after bookViews or workbookPr
+            const bookViews = doc.getElementsByTagName('bookViews')[0];
             const workbookPr = doc.getElementsByTagName('workbookPr')[0];
-            if (workbookPr && workbookPr.parentNode) {
+            
+            if (bookViews && bookViews.parentNode) {
+              bookViews.parentNode.insertBefore(newSheetsElement, bookViews.nextSibling);
+            } else if (workbookPr && workbookPr.parentNode) {
               workbookPr.parentNode.insertBefore(newSheetsElement, workbookPr.nextSibling);
-            } else {
+            } else if (workbook) {
               workbook.appendChild(newSheetsElement);
             }
             
@@ -256,6 +345,7 @@ export async function fixFileIntegrity(
             newSheet.setAttribute('name', 'Sheet1');
             newSheet.setAttribute('sheetId', '1');
             newSheet.setAttribute('r:id', 'rId1');
+            newSheet.setAttribute('state', 'visible');
             sheetsElement.appendChild(newSheet);
             
             modified = true;
@@ -441,60 +531,187 @@ export async function fixFileIntegrity(
       let workbookRels = await workbookRelsFile.async('string');
       let modified = false;
       
-      // Check for VBA project relationship
-      if (!workbookRels.includes('vnd.ms-office.vbaProject') && zip.file('xl/vbaProject.bin')) {
-        // Generate a unique rId
-        let maxRid = 0;
-        const ridMatches = workbookRels.match(/Id="rId(\d+)"/g);
-        if (ridMatches) {
-          for (const match of ridMatches) {
-            const ridNum = parseInt(match.replace(/Id="rId(\d+)"/, '$1'));
-            if (ridNum > maxRid) {
-              maxRid = ridNum;
+      try {
+        // Parse and fix XML structure
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(workbookRels, 'text/xml');
+        
+        // Check for Relationships element
+        const relationships = doc.getElementsByTagName('Relationships')[0];
+        if (!relationships) {
+          logger('Invalid workbook relationships file, missing Relationships element', 'warning');
+        } else {
+          // Check for VBA project relationship
+          let hasVbaRel = false;
+          const rels = doc.getElementsByTagName('Relationship');
+          
+          for (let i = 0; i < rels.length; i++) {
+            const type = rels[i].getAttribute('Type');
+            if (type && type.includes('vbaProject')) {
+              hasVbaRel = true;
+              break;
             }
           }
-        }
-        
-        const newRid = `rId${maxRid + 1}`;
-        workbookRels = workbookRels.replace(
-          /<Relationships[^>]*>/,
-          `$&\n  <Relationship Id="${newRid}" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/>`
-        );
-        modified = true;
-        logger('Added missing VBA project relationship', 'info');
-      }
-      
-      // Check for worksheet relationships
-      for (const file of allFiles) {
-        if (file.startsWith('xl/worksheets/sheet') && file.endsWith('.xml')) {
-          const sheetName = file.replace('xl/worksheets/', '');
-          if (!workbookRels.includes(`Target="worksheets/${sheetName}"`)) {
+          
+          if (!hasVbaRel && zip.file('xl/vbaProject.bin')) {
             // Generate a unique rId
             let maxRid = 0;
-            const ridMatches = workbookRels.match(/Id="rId(\d+)"/g);
-            if (ridMatches) {
-              for (const match of ridMatches) {
-                const ridNum = parseInt(match.replace(/Id="rId(\d+)"/, '$1'));
-                if (ridNum > maxRid) {
-                  maxRid = ridNum;
+            for (let i = 0; i < rels.length; i++) {
+              const id = rels[i].getAttribute('Id');
+              if (id && id.startsWith('rId')) {
+                const num = parseInt(id.substring(3));
+                if (num > maxRid) {
+                  maxRid = num;
                 }
               }
             }
             
             const newRid = `rId${maxRid + 1}`;
-            workbookRels = workbookRels.replace(
-              /<Relationships[^>]*>/,
-              `$&\n  <Relationship Id="${newRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/${sheetName}"/>`
-            );
+            const newRel = doc.createElement('Relationship');
+            newRel.setAttribute('Id', newRid);
+            newRel.setAttribute('Type', 'http://schemas.microsoft.com/office/2006/relationships/vbaProject');
+            newRel.setAttribute('Target', 'vbaProject.bin');
+            
+            relationships.appendChild(newRel);
             modified = true;
-            logger(`Added missing relationship for ${sheetName}`, 'info');
+            logger('Added missing VBA project relationship', 'info');
+          }
+          
+          // Check for worksheet relationships
+          const worksheetFiles = Object.keys(zip.files).filter(
+            path => path.startsWith('xl/worksheets/sheet') && path.endsWith('.xml')
+          );
+          
+          for (const worksheetPath of worksheetFiles) {
+            const sheetName = worksheetPath.replace('xl/worksheets/', '');
+            let hasRel = false;
+            
+            for (let i = 0; i < rels.length; i++) {
+              const target = rels[i].getAttribute('Target');
+              if (target && target === `worksheets/${sheetName}`) {
+                hasRel = true;
+                break;
+              }
+            }
+            
+            if (!hasRel) {
+              // Generate a unique rId
+              let maxRid = 0;
+              for (let i = 0; i < rels.length; i++) {
+                const id = rels[i].getAttribute('Id');
+                if (id && id.startsWith('rId')) {
+                  const num = parseInt(id.substring(3));
+                  if (num > maxRid) {
+                    maxRid = num;
+                  }
+                }
+              }
+              
+              const newRid = `rId${maxRid + 1}`;
+              const newRel = doc.createElement('Relationship');
+              newRel.setAttribute('Id', newRid);
+              newRel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet');
+              newRel.setAttribute('Target', `worksheets/${sheetName}`);
+              
+              relationships.appendChild(newRel);
+              modified = true;
+              logger(`Added missing relationship for ${sheetName} with ID ${newRid}`, 'info');
+            }
+          }
+          
+          // Check for styles relationship
+          let hasStylesRel = false;
+          for (let i = 0; i < rels.length; i++) {
+            const target = rels[i].getAttribute('Target');
+            if (target && target === 'styles.xml') {
+              hasStylesRel = true;
+              break;
+            }
+          }
+          
+          if (!hasStylesRel && zip.file('xl/styles.xml')) {
+            // Generate a unique rId
+            let maxRid = 0;
+            for (let i = 0; i < rels.length; i++) {
+              const id = rels[i].getAttribute('Id');
+              if (id && id.startsWith('rId')) {
+                const num = parseInt(id.substring(3));
+                if (num > maxRid) {
+                  maxRid = num;
+                }
+              }
+            }
+            
+            const newRid = `rId${maxRid + 1}`;
+            const newRel = doc.createElement('Relationship');
+            newRel.setAttribute('Id', newRid);
+            newRel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles');
+            newRel.setAttribute('Target', 'styles.xml');
+            
+            relationships.appendChild(newRel);
+            modified = true;
+            logger('Added missing styles relationship', 'info');
+          }
+          
+          // Check for sharedStrings relationship
+          let hasSharedStringsRel = false;
+          for (let i = 0; i < rels.length; i++) {
+            const target = rels[i].getAttribute('Target');
+            if (target && target === 'sharedStrings.xml') {
+              hasSharedStringsRel = true;
+              break;
+            }
+          }
+          
+          if (!hasSharedStringsRel && zip.file('xl/sharedStrings.xml')) {
+            // Generate a unique rId
+            let maxRid = 0;
+            for (let i = 0; i < rels.length; i++) {
+              const id = rels[i].getAttribute('Id');
+              if (id && id.startsWith('rId')) {
+                const num = parseInt(id.substring(3));
+                if (num > maxRid) {
+                  maxRid = num;
+                }
+              }
+            }
+            
+            const newRid = `rId${maxRid + 1}`;
+            const newRel = doc.createElement('Relationship');
+            newRel.setAttribute('Id', newRid);
+            newRel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings');
+            newRel.setAttribute('Target', 'sharedStrings.xml');
+            
+            relationships.appendChild(newRel);
+            modified = true;
+            logger('Added missing sharedStrings relationship', 'info');
+          }
+          
+          if (modified) {
+            const serializer = new XMLSerializer();
+            const newContent = serializer.serializeToString(doc);
+            zip.file('xl/_rels/workbook.xml.rels', newContent);
+            logger('Updated workbook relationships with missing entries', 'success');
           }
         }
-      }
-      
-      if (modified) {
-        zip.file('xl/_rels/workbook.xml.rels', workbookRels);
-        logger('Updated workbook relationships file with missing entries', 'success');
+      } catch (xmlError) {
+        logger(`Error parsing workbook relationships XML: ${xmlError}`, 'warning');
+        
+        // Fallback: Add missing relationships using string manipulation
+        if (zip.file('xl/vbaProject.bin') && !workbookRels.includes('vbaProject.bin')) {
+          // Add VBA project relationship
+          workbookRels = workbookRels.replace(
+            /<Relationships[^>]*>/,
+            `$&\n  <Relationship Id="rId1000" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/>`
+          );
+          modified = true;
+          logger('Added missing VBA project relationship (fallback method)', 'info');
+        }
+        
+        if (modified) {
+          zip.file('xl/_rels/workbook.xml.rels', workbookRels);
+          logger('Updated workbook relationships with fallback method', 'info');
+        }
       }
     }
     

@@ -1,27 +1,29 @@
 /**
- * Represents a VBA code module
+ * Interface representing a VBA module
  */
 export interface VBAModule {
-  /** The name of the module */
+  /** Name of the module */
   name: string;
-  /** The type of the module */
+  /** Type of the module */
   type: VBAModuleType;
-  /** The VBA code content */
+  /** VBA code content */
   code: string;
+  /** Whether the code extraction was successful */
+  extractionSuccess: boolean;
 }
 
 /**
- * Types of VBA modules
+ * Enum representing different types of VBA modules
  */
 export enum VBAModuleType {
-  /** Standard VBA module */
-  Standard = 'Standard Module',
+  /** Standard module */
+  Standard = 0,
   /** Class module */
-  Class = 'Class Module',
-  /** UserForm */
-  Form = 'UserForm',
-  /** Document module (e.g. ThisWorkbook, Sheet1) */
-  Document = 'Document Module',
+  Class = 1,
+  /** Form module */
+  Form = 2,
+  /** Document module (ThisWorkbook, Sheet1, etc.) */
+  Document = 3,
   /** Unknown module type */
-  Unknown = 'Unknown'
+  Unknown = 4
 } 

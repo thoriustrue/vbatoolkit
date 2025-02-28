@@ -1,208 +1,220 @@
-import { WorkBook } from 'xlsx';
+import * as XLSX from 'xlsx';
 import { LoggerCallback } from '../../types';
 import { VBAModule, VBAModuleType } from './types';
 import JSZip from 'jszip';
 
 /**
- * Extracts VBA modules using alternative methods when primary extraction fails
- * @param workbook The workbook containing VBA
- * @param fileData The raw file data as ArrayBuffer
+ * Alternative method to extract VBA modules from a workbook
+ * This method uses direct ZIP extraction to access the vbaProject.bin file
+ * @param workbook The XLSX workbook
+ * @param rawFileData The raw file data as Uint8Array
  * @param logger Callback function for logging messages
- * @returns An array of VBA modules
+ * @returns Array of VBA modules
  */
 export async function extractVBAModulesAlternative(
-  workbook: WorkBook,
-  fileData: ArrayBuffer,
+  workbook: XLSX.WorkBook,
+  rawFileData: Uint8Array,
   logger: LoggerCallback
 ): Promise<VBAModule[]> {
-  const modules: VBAModule[] = [];
-  
   try {
-    logger('Attempting alternative VBA extraction method...', 'info');
+    logger('Starting alternative VBA module extraction...', 'info');
     
-    // Try to extract modules from the binary VBA content
-    if (workbook.vbaraw) {
-      logger('Found VBA binary content, attempting to extract module names...', 'info');
+    const modules: VBAModule[] = [];
+    
+    // Check if we have binary VBA content
+    if (!workbook.vbaraw) {
+      logger('No VBA binary content found in workbook', 'warning');
+      return modules;
+    }
+    
+    // Try to extract module names from the binary content
+    logger('Attempting to extract module names from binary content...', 'info');
+    
+    const vbaContent = new TextDecoder('utf-8').decode(new Uint8Array(workbook.vbaraw));
+    
+    // Method 1: Extract module names using VB_Name attribute
+    const moduleNameMatches = vbaContent.match(/Attribute\s+VB_Name\s*=\s*"([^"]+)"/g);
+    if (moduleNameMatches && moduleNameMatches.length > 0) {
+      logger(`Found ${moduleNameMatches.length} module names using VB_Name attribute`, 'info');
       
-      // Extract module names from the VBA binary content
-      const moduleNames = extractModuleNamesFromVBA(workbook.vbaraw);
-      
-      if (moduleNames.length > 0) {
-        logger(`Found ${moduleNames.length} module names in VBA binary`, 'success');
-        
-        // Create placeholder modules for each name found
-        for (const name of moduleNames) {
-          const type = determineModuleType(name);
+      for (const match of moduleNameMatches) {
+        const nameMatch = match.match(/"([^"]+)"/);
+        if (nameMatch && nameMatch[1]) {
+          const name = nameMatch[1];
+          
+          // Determine module type based on name and surrounding content
+          let type = VBAModuleType.Standard;
+          const moduleStart = vbaContent.indexOf(match);
+          const moduleContext = vbaContent.substring(
+            Math.max(0, moduleStart - 100),
+            Math.min(vbaContent.length, moduleStart + 500)
+          );
+          
+          if (name.toLowerCase() === 'thisdocument' || name.toLowerCase() === 'thisworkbook') {
+            type = VBAModuleType.Document;
+          } else if (name.toLowerCase().startsWith('sheet') || name.toLowerCase().includes('worksheet')) {
+            type = VBAModuleType.Document;
+          } else if (moduleContext.includes('Attribute VB_Creatable = False') && 
+                    moduleContext.includes('Attribute VB_GlobalNameSpace = False')) {
+            type = VBAModuleType.Class;
+          } else if (moduleContext.includes('Begin VB.Form') || name.toLowerCase().includes('form')) {
+            type = VBAModuleType.Form;
+          }
+          
+          // Try to extract code for this module
+          let code = '';
+          let extractionSuccess = false;
+          
+          // Find the module's code section
+          const codeStartIndex = vbaContent.indexOf(match);
+          if (codeStartIndex >= 0) {
+            // Find the next module or end of content
+            let nextModuleIndex = vbaContent.length;
+            for (const otherMatch of moduleNameMatches) {
+              if (otherMatch !== match) {
+                const otherIndex = vbaContent.indexOf(otherMatch);
+                if (otherIndex > codeStartIndex && otherIndex < nextModuleIndex) {
+                  nextModuleIndex = otherIndex;
+                }
+              }
+            }
+            
+            // Extract the code between this module and the next
+            let moduleCode = vbaContent.substring(codeStartIndex, nextModuleIndex).trim();
+            
+            // Clean up the code - remove attributes and binary artifacts
+            const attributeEndIndex = moduleCode.search(/(?:^|\r\n)(?!Attribute VB_)/m);
+            if (attributeEndIndex > 0) {
+              code = moduleCode.substring(attributeEndIndex).trim();
+              code = code.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+              extractionSuccess = code.length > 0;
+            }
+          }
+          
+          if (!extractionSuccess) {
+            code = `' Code could not be fully extracted for module: ${name}`;
+          }
+          
           modules.push({
             name,
             type,
-            code: `' Module: ${name}\n' Code could not be fully extracted\n' This is a placeholder for the module structure`
+            code,
+            extractionSuccess
           });
+          
+          logger(`Extracted module: ${name} (${VBAModuleType[type]})`, extractionSuccess ? 'success' : 'warning');
         }
-      } else {
-        logger('Could not find module names in VBA binary, trying ZIP extraction...', 'info');
       }
     }
     
-    // If no modules found yet, try to extract from ZIP structure
+    // Method 2: If no modules found, try ZIP extraction
     if (modules.length === 0) {
+      logger('No modules found using binary content, trying ZIP extraction...', 'info');
+      
       try {
-        const zip = await JSZip.loadAsync(fileData);
+        // Load the file as a ZIP archive
+        const zip = await JSZip.loadAsync(rawFileData);
         
         // Look for vbaProject.bin
-        const vbaProjectFile = zip.file('xl/vbaProject.bin');
+        const vbaProjectFile = zip.file(/xl\/vbaProject.bin$/i)[0];
+        
         if (vbaProjectFile) {
-          const vbaContent = await vbaProjectFile.async('uint8array');
+          logger('Found vbaProject.bin in ZIP structure', 'info');
           
-          // Try to extract module names from the VBA project binary
-          const moduleNames = extractModuleNamesFromVBA(vbaContent);
+          // Extract the file content
+          const vbaProjectContent = await vbaProjectFile.async('uint8array');
+          const vbaText = new TextDecoder('utf-8').decode(vbaProjectContent);
           
-          if (moduleNames.length > 0) {
-            logger(`Found ${moduleNames.length} module names in vbaProject.bin`, 'success');
+          // Look for module names
+          const dirMatches = vbaText.match(/(?:MODULE|CLASS|DOCUMENT)=([^\r\n]+)/g) || [];
+          
+          for (const match of dirMatches) {
+            let type = VBAModuleType.Unknown;
+            let name = '';
             
-            // Create placeholder modules for each name found
-            for (const name of moduleNames) {
-              const type = determineModuleType(name);
+            if (match.startsWith('MODULE=')) {
+              type = VBAModuleType.Standard;
+              name = match.substring(7).trim();
+            } else if (match.startsWith('CLASS=')) {
+              type = VBAModuleType.Class;
+              name = match.substring(6).trim();
+            } else if (match.startsWith('DOCUMENT=')) {
+              type = VBAModuleType.Document;
+              name = match.substring(9).trim();
+            }
+            
+            if (name) {
               modules.push({
                 name,
                 type,
-                code: `' Module: ${name}\n' Code could not be fully extracted\n' This is a placeholder for the module structure`
+                code: `' Code could not be fully extracted for module: ${name}`,
+                extractionSuccess: false
               });
+              
+              logger(`Found module via ZIP extraction: ${name} (${VBAModuleType[type]})`, 'info');
+            }
+          }
+          
+          // Look for form modules
+          const formMatches = vbaText.match(/Begin VB\.Form ([^\r\n]+)/g) || [];
+          for (const match of formMatches) {
+            const name = match.substring(14).trim();
+            if (name) {
+              modules.push({
+                name,
+                type: VBAModuleType.Form,
+                code: `' Code could not be fully extracted for form: ${name}`,
+                extractionSuccess: false
+              });
+              
+              logger(`Found form module via ZIP extraction: ${name}`, 'info');
             }
           }
         }
-        
-        // If still no modules, check for sheet names in the workbook
-        if (modules.length === 0 && workbook.SheetNames) {
-          logger('Extracting sheet names as potential VBA modules...', 'info');
-          
-          // Add ThisWorkbook
-          modules.push({
-            name: 'ThisWorkbook',
-            type: VBAModuleType.Document,
-            code: `' Module: ThisWorkbook\n' Code could not be fully extracted\n' This is a placeholder for the module structure`
-          });
-          
-          // Add sheets
-          for (const sheetName of workbook.SheetNames) {
-            modules.push({
-              name: sheetName,
-              type: VBAModuleType.Document,
-              code: `' Module: ${sheetName}\n' Code could not be fully extracted\n' This is a placeholder for the module structure`
-            });
-          }
-        }
       } catch (zipError) {
-        logger(`Error extracting from ZIP: ${zipError instanceof Error ? zipError.message : String(zipError)}`, 'warning');
+        logger(`Error during ZIP extraction: ${zipError instanceof Error ? zipError.message : String(zipError)}`, 'warning');
       }
     }
     
-    // If still no modules found, create a generic module
-    if (modules.length === 0) {
-      logger('Could not extract any module information, creating generic module', 'warning');
+    // Method 3: Try to find module names in the workbook structure
+    if (modules.length === 0 && workbook.Workbook) {
+      logger('Attempting to find modules in workbook structure...', 'info');
       
-      const UnknownModule: VBAModule = {
-        name: 'ExtractedVBA',
-        type: VBAModuleType.Unknown,
-        code: '\'VBA code could not be extracted\n\'The file may have an unsupported format or corrupted VBA project'
-      };
+      // Check for ThisWorkbook
+      modules.push({
+        name: 'ThisWorkbook',
+        type: VBAModuleType.Document,
+        code: `' Code could not be fully extracted for ThisWorkbook`,
+        extractionSuccess: false
+      });
       
-      modules.push(UnknownModule);
+      // Check for worksheet modules
+      if (workbook.SheetNames && workbook.SheetNames.length > 0) {
+        for (const sheetName of workbook.SheetNames) {
+          modules.push({
+            name: sheetName,
+            type: VBAModuleType.Document,
+            code: `' Code could not be fully extracted for worksheet: ${sheetName}`,
+            extractionSuccess: false
+          });
+        }
+      }
+      
+      logger(`Added ${modules.length} potential modules based on workbook structure`, 'info');
     }
     
+    // Sort modules by type and name
+    modules.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type - b.type;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    
+    logger(`Alternative extraction found ${modules.length} modules`, modules.length > 0 ? 'success' : 'warning');
     return modules;
   } catch (error) {
-    logger(`Error in alternative extraction: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    
-    // Return a generic module in case of error
-    const ExtractedVBA: VBAModule = {
-      name: 'ExtractedVBA',
-      type: VBAModuleType.Standard,
-      code: '\'Error during VBA extraction\n\'The file may have an unsupported format or corrupted VBA project'
-    };
-    
-    return [ExtractedVBA];
+    logger(`Error in alternative VBA extraction: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return [];
   }
-}
-
-/**
- * Extracts module names from VBA binary content
- * @param vbaContent The VBA binary content
- * @returns An array of module names
- */
-function extractModuleNamesFromVBA(vbaContent: Uint8Array): string[] {
-  const moduleNames: string[] = [];
-  
-  try {
-    // Convert binary to string for regex matching
-    const vbaString = new TextDecoder('utf-8').decode(vbaContent);
-    
-    // Multiple regex patterns to find module names
-    const patterns = [
-      // Pattern for module headers
-      /(?:Attribute\s+VB_Name\s*=\s*"([^"]+)")/gi,
-      
-      // Pattern for class modules
-      /(?:BEGIN\s+(?:Class|Form|Module)\s+([A-Za-z0-9_]+))/gi,
-      
-      // Pattern for sheet modules
-      /(?:Sheet([0-9]+))/gi,
-      
-      // Pattern for ThisWorkbook
-      /(?:ThisWorkbook)/gi,
-      
-      // Pattern for UserForms
-      /(?:UserForm([0-9]+))/gi,
-      
-      // Pattern for standard modules with common naming
-      /(?:Module([0-9]+))/gi
-    ];
-    
-    // Apply each pattern and collect unique names
-    const foundNames = new Set<string>();
-    
-    for (const pattern of patterns) {
-      let match;
-      while ((match = pattern.exec(vbaString)) !== null) {
-        if (match[1]) {
-          foundNames.add(match[1]);
-        } else if (match[0]) {
-          foundNames.add(match[0]);
-        }
-      }
-    }
-    
-    // Convert Set to Array
-    moduleNames.push(...Array.from(foundNames));
-  } catch (error) {
-    // Silently fail and return empty array
-    console.error('Error extracting module names:', error);
-  }
-  
-  return moduleNames;
-}
-
-/**
- * Determines the type of a VBA module based on its name
- * @param moduleName The name of the module
- * @returns The type of the module
- */
-function determineModuleType(moduleName: string): VBAModuleType {
-  // Check for document modules
-  if (moduleName === 'ThisWorkbook' || moduleName.startsWith('Sheet')) {
-    return VBAModuleType.Document;
-  }
-  
-  // Check for UserForms
-  if (moduleName.includes('UserForm')) {
-    return VBAModuleType.Form;
-  }
-  
-  // Check for Class modules
-  if (moduleName.includes('Class')) {
-    return VBAModuleType.Class;
-  }
-  
-  // Default to standard module
-  return VBAModuleType.Standard;
 } 
