@@ -1,7 +1,6 @@
+import { LoggerCallback } from './types';
+import { isValidZip } from './zipValidator.js';
 import JSZip from 'jszip';
-
-// Type for the logger callback function
-type LoggerCallback = (message: string, type: 'info' | 'error' | 'success') => void;
 
 /**
  * Removes security settings from Excel files (auto-enable macros and external links)

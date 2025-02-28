@@ -26,8 +26,12 @@ export default defineConfig({
     // Ensure sourcemaps are generated
     sourcemap: true,
     // Improve output for deployment
+    assetsInlineLimit: 0,
     rollupOptions: {
       output: {
+        entryFileNames: `assets/[name].js`,
+        chunkFileNames: `assets/[name].js`,
+        assetFileNames: `assets/[name].[ext]`,
         manualChunks: {
           vendor: ['react', 'react-dom'],
           xlsx: ['xlsx'],

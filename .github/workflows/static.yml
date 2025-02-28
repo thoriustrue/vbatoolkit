@@ -50,6 +50,11 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: './dist'
+          headers: |
+            /*.js:
+              Content-Type: application/javascript
+            /*.css:
+              Content-Type: text/css
 
   deploy:
     environment:

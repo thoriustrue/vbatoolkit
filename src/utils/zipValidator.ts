@@ -111,11 +111,8 @@ export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
 // Replace Buffer with Uint8Array for browser compatibility
 const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
 
-exports.isValidZip = function isValidZip(outputFileBuffer: ArrayBuffer) {
-  // Convert buffer slice to Uint8Array for comparison
+export function isValidZip(outputFileBuffer: ArrayBuffer): boolean {
   const headerBuffer = new Uint8Array(outputFileBuffer.slice(0, 4));
-  
-  // Compare array values directly
   return headerBuffer.length === ZIP_SIGNATURE.length &&
          headerBuffer.every((value, index) => value === ZIP_SIGNATURE[index]);
-}; 
+} 
