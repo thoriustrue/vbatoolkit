@@ -7,6 +7,10 @@ export async function injectVBACode(
   logger: LoggerCallback
 ): Promise<void> {
   try {
+    if (!fileData.byteLength) {
+      logger('Received empty file buffer', 'error');
+      return;
+    }
     await validateZipFile(fileData, logger);
     const zip = await JSZip.loadAsync(fileData);
 
