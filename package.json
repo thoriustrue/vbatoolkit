@@ -9,8 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "clean": "rm -rf node_modules dist && npm cache clean --force",
-    "install": "npm ci",
-    "setup": "npm run clean && npm run install",
+    "install-deps": "npm ci",
+    "setup": "npm run clean && npm run install-deps",
     "deploy": "npm run build && npm run deploy:github",
     "deploy:github": "gh-pages -d dist",
     "polyfill": "npm install buffer"
