@@ -5,8 +5,15 @@ import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfil
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Define global values
+  define: {
+    global: 'globalThis',
+    // Ensure Buffer is defined for library code
+    'global.Buffer': 'globalThis.Buffer',
+  },
   optimizeDeps: {
-    exclude: ['lucide-react'],
+    // Force include buffer - even if not directly imported
+    include: ['buffer'],
     esbuildOptions: {
       // Node.js global to browser global polyfills
       define: {
@@ -35,7 +42,9 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom'],
           xlsx: ['xlsx'],
-          jszip: ['jszip']
+          jszip: ['jszip'],
+          // Create a separate chunk for buffer polyfill
+          polyfill: ['buffer']
         }
       }
     }

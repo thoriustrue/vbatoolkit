@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Excel VBA Password Remover</title>
     <meta name="description" content="Client-side Excel VBA password protection remover tool" />
+    <!-- Early Buffer polyfill -->
+    <script>
+      // Create a placeholder Buffer until the real one loads
+      window.Buffer = window.Buffer || { from: function() { return []; } };
+    </script>
   </head>
   <body>
     <div id="root"></div>
