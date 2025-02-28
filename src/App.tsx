@@ -1,12 +1,64 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, FileUp, Download, AlertCircle, CheckCircle, Info, Loader2, RefreshCw, Code, Shield } from 'lucide-react';
+import { Upload, FileUp, Download, AlertCircle, CheckCircle, Info, Loader2, RefreshCw, Code, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { removeVBAPassword } from './utils/vbaPasswordRemover';
 import { extractVBACode, VBAModule, createVBACodeFile } from './utils/vbaCodeExtractor';
 import { injectVBACode } from './utils/vbaCodeInjector';
 import { ErrorBoundary, ErrorLogPanel, useErrorLogger } from './components/ErrorLogger';
-import { Changelog } from './components/Changelog';
 import { ErrorLog } from './components/ErrorLog';
-import { CHANGELOG_DATA } from './data/changelog';
+
+// Define changelog data directly in App.tsx to avoid import issues
+interface ChangelogEntry {
+  version: string;
+  date: string;
+  changes: {
+    type: 'added' | 'fixed' | 'changed' | 'removed';
+    description: string;
+  }[];
+}
+
+const CHANGELOG_DATA: ChangelogEntry[] = [
+  {
+    version: '0.1.1',
+    date: '2024-06-20',
+    changes: [
+      { type: 'added', description: 'Added VBA password removal functionality' },
+      { type: 'added', description: 'Implemented macro auto-enable features' },
+      { type: 'added', description: 'Added error logging system' }
+    ]
+  },
+  {
+    version: '0.1.0',
+    date: '2024-06-15',
+    changes: [
+      { type: 'added', description: 'Initial release of VBA Toolkit' },
+      { type: 'added', description: 'Basic file handling capabilities' },
+      { type: 'added', description: 'User interface for file operations' }
+    ]
+  }
+];
+
+// Simple Changelog component defined directly in App.tsx
+function Changelog({ children }: { children?: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <details className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+      <summary 
+        className="flex items-center cursor-pointer list-none"
+        onClick={(e) => {
+          e.preventDefault();
+          setIsOpen(!isOpen);
+        }}
+      >
+        {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        <span className="ml-2">Version History</span>
+      </summary>
+      <div className="ml-6 mt-2 space-y-2">
+        {children}
+      </div>
+    </details>
+  );
+}
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -563,6 +615,7 @@ function App() {
           </div>
         </main>
         
+        {/* Footer with changelog */}
         <footer className="mt-auto p-4 border-t border-gray-200 dark:border-gray-700">
           <Changelog>
             {CHANGELOG_DATA.map((entry, index) => (
