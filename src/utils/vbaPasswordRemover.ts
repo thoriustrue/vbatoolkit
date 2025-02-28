@@ -149,6 +149,14 @@ async function processVBAProjectBin(
       { pattern: [0x50, 0x61, 0x73, 0x73, 0x77, 0x6F, 0x72, 0x64, 0x50, 0x72, 0x6F, 0x74, 0x65, 0x63, 0x74, 0x69, 0x6F, 0x6E], name: "PasswordProtection" },
     ];
     
+    const validatePatternPosition = (index: number, buffer: Uint8Array) => {
+      if (index > buffer.length - 100) {
+        logger(`Suspicious pattern position at offset ${index}`, 'warning');
+        return false;
+      }
+      return true;
+    };
+    
     for (const { pattern, name } of protectionPatterns) {
       const indices = findAllPatterns(modifiedVbaProject, pattern);
       
@@ -156,6 +164,8 @@ async function processVBAProjectBin(
         logger(`Found ${indices.length} ${name} pattern(s) in vbaProject.bin.`, 'info');
         
         for (const index of indices) {
+          if (!validatePatternPosition(index, modifiedVbaProject)) continue;
+          
           if (name.endsWith("=")) {
             // For patterns like DPB=, CMG=, GC=, clear the hash value
             let endIndex = index + pattern.length;
@@ -209,6 +219,8 @@ async function processVBAProjectBin(
         logger(`Found ${indices.length} ${name} specific pattern(s) in vbaProject.bin.`, 'info');
         
         for (const index of indices) {
+          if (!validatePatternPosition(index, modifiedVbaProject)) continue;
+          
           // For specific patterns, clear a larger area to ensure all protection is removed
           const clearRange = 50; // Clear 50 bytes after the pattern
           for (let i = index + pattern.length; i < index + pattern.length + clearRange && i < modifiedVbaProject.length; i++) {
@@ -235,6 +247,8 @@ async function processVBAProjectBin(
         logger(`Found ${indices.length} ${name} marker(s) in vbaProject.bin.`, 'info');
         
         for (const index of indices) {
+          if (!validatePatternPosition(index, modifiedVbaProject)) continue;
+          
           // Check if there's a protection flag (0x01) right after the marker
           if (index + pattern.length < modifiedVbaProject.length) {
             // Clear several bytes after the marker to be safe
@@ -442,6 +456,8 @@ async function safePasswordRemoval(
         logger(`Found ${dpbIndices.length} DPB signature(s).`, 'info');
         
         for (const dpbIndex of dpbIndices) {
+          if (!validatePatternPosition(dpbIndex, modifiedData)) continue;
+          
           // For OLE files, we need to be more careful with the modification
           // Only modify the bytes that are definitely part of the password hash
           // Typically, the password hash follows the DPB= signature
@@ -470,6 +486,8 @@ async function safePasswordRemoval(
         logger(`Found ${cmgIndices.length} CMG signature(s).`, 'info');
         
         for (const cmgIndex of cmgIndices) {
+          if (!validatePatternPosition(cmgIndex, modifiedData)) continue;
+          
           // Find the end of the password hash
           let endIndex = cmgIndex + 4;
           while (endIndex < modifiedData.length && 
@@ -494,6 +512,8 @@ async function safePasswordRemoval(
         logger(`Found ${vbaProjectIndices.length} VBAProject signature(s).`, 'info');
         
         for (const vbaIndex of vbaProjectIndices) {
+          if (!validatePatternPosition(vbaIndex, modifiedData)) continue;
+          
           // Common offsets for protection flags in OLE files
           const commonOffsets = [0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 
                                 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F];

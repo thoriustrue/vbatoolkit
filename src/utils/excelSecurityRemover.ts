@@ -83,6 +83,11 @@ export async function removeExcelSecurity(
         unixPermissions: null,  // Important for Windows compatibility
         comment: 'Modified by VBAToolkit'
       });
+      
+      if (!validateXML(workbookXml)) {
+        logger('Invalid XML structure after modification', 'error');
+        throw new Error('XML validation failed');
+      }
     }
     
     // 2. Remove sheet protection from all worksheets
@@ -241,7 +246,23 @@ export async function removeExcelSecurity(
         unixPermissions: null,  // Important for Windows compatibility
         comment: 'Modified by VBAToolkit'
       });
+      
+      if (!validateXML(workbookXml)) {
+        logger('Invalid XML structure after modification', 'error');
+        throw new Error('XML validation failed');
+      }
     }
+    
+    // Remove any signature references from .rels files
+    const relsFiles = Object.keys(zipData.files).filter(f => f.endsWith('.rels'));
+    await Promise.all(relsFiles.map(async f => {
+      let rels = await zipData.file(f)!.async('text');
+      if (rels.includes('vbaProjectSignature.bin')) {
+        rels = rels.replace(/<Relationship[^>]*vbaProjectSignature\.bin[^>]*\/>/g, '');
+        zipData.file(f, rels);
+        logger(`Cleaned signature references from ${f}`, 'info');
+      }
+    }));
     
     if (!securityRemoved) {
       logger('No security settings were found to remove.', 'info');
@@ -258,6 +279,13 @@ export async function removeExcelSecurity(
         level: 9
       }
     });
+    
+    validateFileSignature(new Uint8Array(modifiedZip.buffer), logger);
+    
+    if (zipData.files['xl/vbaProjectSignature.rels']) {
+      zipData.remove('xl/vbaProjectSignature.rels');
+      logger('Removed vbaProjectSignature.rels for full bypass', 'info');
+    }
     
     return modifiedZip;
   } catch (error) {
@@ -313,3 +341,27 @@ function findAllPatterns(data: Uint8Array, pattern: number[]): number[] {
   
   return indices;
 }
+
+function validateFileSignature(data: Uint8Array, logger: LoggerCallback) {
+  const signatures = {
+    xlsm: [0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00],
+    xlsb: [0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x08, 0x00]
+  };
+  
+  const header = Array.from(data.slice(0, 8));
+  const isXlsm = signatures.xlsm.every((val, idx) => val === header[idx]);
+  const isXlsb = signatures.xlsb.every((val, idx) => val === header[idx]);
+  
+  if (!isXlsm && !isXlsb) {
+    logger('INVALID FILE SIGNATURE: Not a valid Excel file', 'error');
+    logger(`Header bytes: ${header.map(b => b.toString(16)).join(' ')}`, 'error');
+  } else {
+    logger(`Valid ${isXlsm ? 'XLSM' : 'XLSB'} signature detected`, 'success');
+  }
+}
+
+const validateXML = (xml: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'text/xml');
+  return doc.documentElement.nodeName !== 'parsererror';
+};
