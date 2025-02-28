@@ -13,8 +13,10 @@ export default defineConfig({
     'global.Buffer': 'globalThis.Buffer',
   },
   optimizeDeps: {
-    // Force include buffer - even if not directly imported
-    include: ['buffer'],
+    include: [
+      'buffer',
+      'xlsx/dist/xlsx.full.min.js' // Force include XLSX
+    ],
     esbuildOptions: {
       // Node.js global to browser global polyfills
       define: {

@@ -11,6 +11,9 @@ import './index.css';
 // Force include XLSX dependencies
 import 'xlsx/dist/xlsx.full.min.js';
 
+// Add after Buffer polyfill
+import './utils/xlsxWrapper';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>

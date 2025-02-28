@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import { readWorkbook } from './xlsxWrapper';
 import { utils as XLSXUtils } from 'xlsx';
 
 // Type for the logger callback function
@@ -28,7 +28,7 @@ export async function extractVBACode(
     progressCallback(20);
     
     // Use SheetJS to read the workbook with VBA content
-    const workbook = XLSX.read(arrayBuffer, { 
+    const workbook = readWorkbook(arrayBuffer, { 
       bookVBA: true,  // Important: This tells SheetJS to preserve VBA
       cellFormula: false, // We don't need formulas
       cellHTML: false, // We don't need HTML
