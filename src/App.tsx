@@ -6,6 +6,7 @@ import { injectVBACode } from './utils/vbaCodeInjector';
 import { ErrorBoundary, ErrorLogPanel, useErrorLogger } from './components/ErrorLogger';
 import { Changelog } from './components/Changelog';
 import { ErrorLog } from './components/ErrorLog';
+import { CHANGELOG_DATA } from './data/changelog';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
