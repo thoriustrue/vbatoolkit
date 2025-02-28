@@ -1,4 +1,4 @@
-import AdmZip from 'adm-zip';
+import JSZip from 'jszip';
 import { LoggerCallback } from './types';
 
 /**
@@ -12,10 +12,11 @@ export async function validateZipFile(
   logger: LoggerCallback
 ): Promise<boolean> {
   try {
-    const zip = new AdmZip(Buffer.from(fileData));
+    // Use JSZip instead of AdmZip (browser-compatible)
+    const zip = await JSZip.loadAsync(fileData);
     
     // Check if the ZIP has valid entries
-    const entries = zip.getEntries();
+    const entries = Object.keys(zip.files);
     if (entries.length === 0) {
       logger('ZIP file contains no entries', 'error');
       return false;
@@ -23,9 +24,9 @@ export async function validateZipFile(
     
     logger(`ZIP file contains ${entries.length} entries`, 'info');
     
-    // Validate CRC checksums
-    if (!validateOfficeCRC(zip, logger)) {
-      logger('ZIP file has CRC validation errors', 'error');
+    // Validate file structure
+    if (!validateOfficeStructure(zip, logger)) {
+      logger('ZIP file has invalid Office structure', 'error');
       return false;
     }
     
@@ -37,40 +38,51 @@ export async function validateZipFile(
 }
 
 /**
- * Validates CRC checksums in the ZIP file
- * @param zip The AdmZip instance
+ * Validates Office file structure
+ * @param zip The JSZip instance
  * @param logger Callback function for logging messages
- * @returns True if all CRCs are valid, false otherwise
+ * @returns True if structure is valid, false otherwise
  */
-export function validateOfficeCRC(zip: AdmZip, logger: LoggerCallback): boolean {
+export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
   try {
-    let valid = true;
+    // Check for essential Office files
+    const requiredPaths = [
+      '[Content_Types].xml',
+      '_rels/.rels'
+    ];
     
-    zip.getEntries().forEach(entry => {
-      try {
-        // Skip directories
-        if (entry.isDirectory) return;
-        
-        const headerCRC = entry.header.crc;
-        // AdmZip calculates CRC when reading the file
-        const content = entry.getData();
-        
-        // Log successful validation
-        logger(`Validated CRC for ${entry.entryName}`, 'info');
-      } catch (error) {
-        logger(`CRC check failed for ${entry.entryName}: ${error instanceof Error ? error.message : String(error)}`, 'error');
-        valid = false;
-      }
-    });
+    const missingPaths = requiredPaths.filter(path => !zip.files[path]);
     
-    return valid;
+    if (missingPaths.length > 0) {
+      logger(`Missing required Office files: ${missingPaths.join(', ')}`, 'error');
+      return false;
+    }
+    
+    // Check for Excel-specific files
+    const isExcel = zip.files['xl/workbook.xml'] !== undefined;
+    if (isExcel) {
+      logger('Valid Excel file structure detected', 'info');
+    } else {
+      logger('Not a valid Excel file structure', 'error');
+      return false;
+    }
+    
+    return true;
   } catch (error) {
-    logger(`CRC validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    logger(`Structure validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return false;
   }
 }
 
-export function validateExcelStructure(zip: AdmZip, logger: LoggerCallback) {
+/**
+ * This function is replaced with validateOfficeStructure
+ * Keeping the function signature for compatibility
+ */
+export function validateOfficeCRC(zip: any, logger: LoggerCallback): boolean {
+  return validateOfficeStructure(zip, logger);
+}
+
+export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
   const requiredEntries = [
     '[Content_Types].xml',
     'xl/workbook.xml',
@@ -79,15 +91,15 @@ export function validateExcelStructure(zip: AdmZip, logger: LoggerCallback) {
   ];
 
   requiredEntries.forEach(entry => {
-    if (!zip.getEntry(entry)) {
+    if (!zip.files[entry]) {
       logger(`MISSING CRITICAL ENTRY: ${entry}`, 'error');
     }
   });
 
   // Validate workbook XML root element
-  const workbookEntry = zip.getEntry('xl/workbook.xml');
+  const workbookEntry = zip.files['xl/workbook.xml'];
   if (workbookEntry) {
-    const content = zip.readAsText(workbookEntry);
+    const content = workbookEntry.async('string');
     if (!content.includes('<workbook xmlns=')) {
       logger('Invalid workbook.xml: Missing root namespace declaration', 'error');
     }
