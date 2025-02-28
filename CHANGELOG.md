@@ -1,6 +1,67 @@
 # Changelog
 
-All notable changes to the VBA Toolkit will be documented in this file.
+All notable changes to this project will be documented in this file.
+
+## [0.1.0] - 2025-02-28
+
+- Fixes
+- Various fixes
+- Various fixes
+- Update vbaPasswordRemover.ts
+- Update zipValidator.ts
+- Create fileUtils.ts
+- JSZip updates..
+- Update vite.config.ts
+- Update zip.js
+- New dedicated Zip handler
+- Various fixes
+- Various fixes
+- Updates
+- Updates
+- updates
+- Updates
+- Polyfill and buffer updates
+- Updates
+- Buffer issue resolution
+- Update zipValidator.ts
+- Update zipValidator.ts
+- Update zipValidator.ts
+- Update package-lock.json
+- Updates
+- Update package.json
+- zip.js updates
+- Update static.yml
+- Update excelSecurityRemover.ts
+- Updates
+- Update zip.js dep
+- Error Logging/CHANGELOG Update
+- Update zipValidator.ts
+- Add adm-zip dependencies and update lockfile
+- Update vbaCodeInjector.ts
+- Update vbaCodeInjector.ts
+- Update static.yml
+- Create .gitignore
+- Update package dependencies
+- Update package dependencies
+- Update office-crypto deps.
+- Office Dependencies
+- update crc version
+- Updates
+- Update vbaPasswordRemover.ts
+- Updates
+- Updates
+- Updates
+- Updates
+- Add file-saver dependency
+- Update vbaCodeInjector.ts
+- Update vbaCodeInjector.ts
+- Updates
+- Update vite.config.ts
+- Update vite.config.ts
+- Update index.html
+- Update vite.config.ts
+- Update static.yml
+
 
 ## [1.1.0] - 2025-03-01
 
