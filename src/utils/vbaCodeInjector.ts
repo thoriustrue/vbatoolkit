@@ -17,14 +17,15 @@ export async function injectVBACode(
     logger('Extracting Excel file...', 'info');
 
     // Log the contents of the ZIP archive
-    logger(`
-```
-    const modifiedFileData = await zip.generateAsync({
-      type: 'blob',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 9 },
-      mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
-    });
+    logger(`Code example for generating modified file:
+\`\`\`typescript
+const modifiedFileData = await zip.generateAsync({
+  type: 'blob',
+  compression: 'DEFLATE',
+  compressionOptions: { level: 9 },
+  mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
+});
+\`\`\``, 'info');
 
     // Add this function
     function validateVBAChecksum(data: Uint8Array, logger: LoggerCallback) {
@@ -63,6 +64,6 @@ export async function injectVBACode(
       logger(`INVALID FILE SIGNATURE: First bytes are 0x${finalBytes[0].toString(16)} 0x${finalBytes[1].toString(16)}`, 'error');
     }
   } catch (error) {
-    logger(`Error injecting VBA code: ${error.message}`, 'error');
+    logger(`Error injecting VBA code: ${error instanceof Error ? error.message : String(error)}`, 'error');
   }
 }
