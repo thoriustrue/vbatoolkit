@@ -2,6 +2,8 @@ import JSZip from 'jszip';
 import { LoggerCallback, ProgressCallback } from './types';
 import { readFileAsArrayBuffer } from './fileUtils';
 import { validateOfficeCRC, isValidZip } from './zipValidator';
+import { removeSheetProtections } from './sheetProtectionRemover';
+import { fixFileIntegrity } from './fileIntegrityFixer';
 
 export async function removeVBAPassword(
   file: File,
@@ -119,6 +121,14 @@ export async function removeVBAPassword(
     }
     
     progressCallback(0.8);
+    
+    // Fix sheet protections
+    await removeSheetProtections(zip, logger);
+    progressCallback(0.85);
+    
+    // Apply file integrity fixes
+    zip = await fixFileIntegrity(zip, logger);
+    progressCallback(0.9);
     
     // Generate the modified file with proper MIME type and compression
     const modifiedFile = await zip.generateAsync({
