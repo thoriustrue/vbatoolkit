@@ -564,26 +564,26 @@ function App() {
         
         <footer className="mt-auto p-4 border-t border-gray-200 dark:border-gray-700">
           <Changelog>
-            <div className="space-y-2">
-              <h3 className="font-medium">v0.1.1 - 2024-06-20</h3>
-              <ul className="list-disc pl-4 space-y-1">
-                <li>Added VBA password removal functionality</li>
-                <li>Implemented macro auto-enable features</li>
-                <li>Added error logging system</li>
-              </ul>
-            </div>
+            {CHANGELOG_DATA.map((entry, index) => (
+              <div key={index} className="space-y-2 mb-4">
+                <h3 className="font-medium">v{entry.version} - {entry.date}</h3>
+                <ul className="list-disc pl-4 space-y-1">
+                  {entry.changes.map((change, i) => (
+                    <li key={i} className={
+                      change.type === 'added' ? 'text-green-600 dark:text-green-400' :
+                      change.type === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
+                      'text-blue-600 dark:text-blue-400'
+                    }>
+                      {change.description}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </Changelog>
         </footer>
         
         <ErrorLog logs={logs} onClear={clearLogs} />
-        
-        {/* Add Changelog in a collapsible panel */}
-        <div className="mt-8">
-          <Changelog />
-        </div>
-        
-        {/* Error log panel will appear when errors occur */}
-        <ErrorLogPanel />
       </div>
     </ErrorBoundary>
   );
