@@ -1,3 +1,5 @@
+'use strict';
+
 import JSZip from 'jszip';
 import { LoggerCallback } from './types';
 
@@ -106,4 +108,13 @@ export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
   }
 }
 
-const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]); 
+const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+
+exports.isValidZip = function isValidZip(outputFileBuffer) {
+  // Convert the first 4 bytes to a Uint8Array
+  const headerBuffer = new Uint8Array(outputFileBuffer.slice(0, 4));
+
+  // Compare the two Uint8Arrays
+  return headerBuffer.length === ZIP_SIGNATURE.length &&
+         headerBuffer.every((value, index) => value === ZIP_SIGNATURE[index]);
+}; 
