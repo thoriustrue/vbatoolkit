@@ -127,7 +127,7 @@ export async function removeVBAPassword(
     progressCallback(0.85);
     
     // Apply file integrity fixes
-    zip = await fixFileIntegrity(zip, logger);
+    await fixFileIntegrity(zip, logger);
     progressCallback(0.9);
     
     // Generate the modified file with proper MIME type and compression

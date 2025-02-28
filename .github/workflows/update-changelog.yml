@@ -51,14 +51,32 @@ jobs:
           if [ -f CHANGELOG.md ]; then
             # Check if this version is already in the changelog
             if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
-              # Create new version entry
-              CHANGELOG_ENTRY="## [$VERSION] - $DATE\n\n${{ steps.get_commits.outputs.commits }}\n\n"
-              # Insert after the first line
-              sed -i "1a\\$CHANGELOG_ENTRY" CHANGELOG.md
+              # Create temporary file with new content
+              echo "# Changelog" > temp_changelog.md
+              echo "" >> temp_changelog.md
+              echo "All notable changes to this project will be documented in this file." >> temp_changelog.md
+              echo "" >> temp_changelog.md
+              echo "## [$VERSION] - $DATE" >> temp_changelog.md
+              echo "" >> temp_changelog.md
+              echo "${{ steps.get_commits.outputs.commits }}" >> temp_changelog.md
+              echo "" >> temp_changelog.md
+              
+              # Append existing changelog content (skipping header)
+              tail -n +4 CHANGELOG.md >> temp_changelog.md
+              
+              # Replace original file
+              mv temp_changelog.md CHANGELOG.md
             fi
           else
             # Create new changelog file
-            echo "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n## [$VERSION] - $DATE\n\n${{ steps.get_commits.outputs.commits }}\n" > CHANGELOG.md
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "All notable changes to this project will be documented in this file." >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "## [$VERSION] - $DATE" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "${{ steps.get_commits.outputs.commits }}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
           fi
       
       - name: Commit and push changes
