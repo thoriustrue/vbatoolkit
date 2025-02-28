@@ -23,8 +23,14 @@ function isValidZip(outputFileBuffer) {
   return true;
 }
 
-// Export using both CommonJS and ES module syntax for maximum compatibility
-exports.isValidZip = isValidZip;
-if (typeof module !== 'undefined') {
-  module.exports = { isValidZip };
+// Export using ES module syntax for Vite/React compatibility
+export { isValidZip };
+export default { isValidZip };
+
+// Also support CommonJS for any build tools that might use it
+if (typeof exports !== 'undefined') {
+  exports.isValidZip = isValidZip;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { isValidZip };
+  }
 } 
