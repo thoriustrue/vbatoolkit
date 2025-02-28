@@ -20,7 +20,7 @@ export default defineConfig({
     }
   },
   // GitHub Pages configuration for the vbatoolkit repository
-  base: '/your-repo-name/',  // Replace with your actual repository name
+  base: '/vbatoolkit/',  // Replace with your actual repository name
   build: {
     // Ensure sourcemaps are generated
     sourcemap: true,
@@ -33,6 +33,12 @@ export default defineConfig({
           jszip: ['jszip']
         }
       }
+    }
+  },
+  server: {
+    cors: {
+      origin: ['http://localhost:3000', 'https://thoriustrue.github.io'],
+      methods: ['GET', 'POST']
     }
   }
 });
