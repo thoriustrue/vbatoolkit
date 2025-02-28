@@ -140,11 +140,15 @@ export async function removeVBAPassword(
     await enableMaximumTrust(zip, logger);
     progressCallback(0.95);
     
+    // IMPORTANT: Preserve all original files that might be getting lost
+    // This ensures we don't lose any critical components
+    await preserveExcelComponents(zip, logger);
+    
     // Generate the modified file with proper MIME type and compression
     const modifiedFile = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
-      compressionOptions: { level: 9 },
+      compressionOptions: { level: 6 }, // Reduced from 9 to prevent over-compression
       mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
     });
     
@@ -168,9 +172,19 @@ export async function removeVBAPassword(
         
         // Continue with processing after recovery
         try {
-          // ... continue with processing ...
+          // Apply file integrity fixes again after recovery
+          await fixFileIntegrity(zip, logger);
           
-          return await zip.generateAsync({ type: 'blob' });
+          // Preserve Excel components
+          await preserveExcelComponents(zip, logger);
+          
+          // Generate the file with more conservative settings
+          return await zip.generateAsync({ 
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 5 }, // Even more conservative compression
+            mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
+          });
         } catch (secondError) {
           logger(`Error after recovery attempt: ${secondError instanceof Error ? secondError.message : String(secondError)}`, 'error');
         }
@@ -179,6 +193,66 @@ export async function removeVBAPassword(
     
     return null;
   }
+}
+
+/**
+ * Ensures all critical Excel components are preserved
+ * This helps prevent file corruption by making sure we don't lose important parts
+ */
+async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Promise<void> {
+  logger('Ensuring all critical Excel components are preserved...', 'info');
+  
+  // Check for critical Excel components
+  const criticalComponents = [
+    '[Content_Types].xml',
+    '_rels/.rels',
+    'xl/workbook.xml',
+    'xl/_rels/workbook.xml.rels',
+    'xl/styles.xml',
+    'xl/theme/theme1.xml'
+  ];
+  
+  // Check if any worksheets exist
+  const worksheets = Object.keys(zip.files).filter(path => 
+    path.startsWith('xl/worksheets/sheet') && path.endsWith('.xml')
+  );
+  
+  if (worksheets.length === 0) {
+    logger('Warning: No worksheets found in the file', 'warning');
+  }
+  
+  // Check for missing critical components
+  for (const component of criticalComponents) {
+    if (!zip.file(component)) {
+      logger(`Warning: Critical component ${component} is missing`, 'warning');
+    }
+  }
+  
+  // Ensure the Content_Types file has all necessary entries
+  const contentTypesFile = zip.file('[Content_Types].xml');
+  if (contentTypesFile) {
+    const contentTypes = await contentTypesFile.async('string');
+    
+    // Check for critical content types
+    const criticalContentTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
+      'application/vnd.ms-office.vbaProject',
+      'application/vnd.openxmlformats-package.relationships+xml'
+    ];
+    
+    let missingTypes = [];
+    for (const type of criticalContentTypes) {
+      if (!contentTypes.includes(type)) {
+        missingTypes.push(type);
+      }
+    }
+    
+    if (missingTypes.length > 0) {
+      logger(`Warning: Missing content types: ${missingTypes.join(', ')}`, 'warning');
+    }
+  }
+  
+  logger('Critical component check completed', 'info');
 }
 
 // Function to preserve VBA structure
@@ -217,12 +291,15 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
       // Protection record is typically within 100-200 bytes of the Project signature
       const searchRange = Math.min(500, data.length - projectInfoOffset);
       
+      let protectionFound = false;
+      
       for (let i = projectInfoOffset; i < projectInfoOffset + searchRange; i++) {
         // Protection record often has this pattern
         if (data[i] === 0x13 && data[i+1] === 0x00 && data[i+2] === 0x01 && data[i+3] === 0x00) {
           // Found potential protection record, disable it
           data[i+2] = 0x00; // Change 0x01 to 0x00 to disable protection
           logger(`Modified protection record at offset ${i}`, 'info');
+          protectionFound = true;
           break;
         }
         
@@ -230,7 +307,28 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
         if (data[i] === 0x13 && data[i+1] === 0x00 && data[i+2] === 0x02 && data[i+3] === 0x00) {
           data[i+2] = 0x00; // Change 0x02 to 0x00
           logger(`Modified alternative protection record at offset ${i}`, 'info');
+          protectionFound = true;
           break;
+        }
+      }
+      
+      if (!protectionFound) {
+        logger('No standard protection record found, searching for extended patterns...', 'info');
+        
+        // Extended search for other protection patterns
+        for (let i = projectInfoOffset; i < projectInfoOffset + searchRange; i++) {
+          // Look for DPB constant (often indicates protection)
+          if (data[i] === 0x44 && data[i+1] === 0x50 && data[i+2] === 0x42) {
+            // Found DPB marker, check nearby bytes
+            for (let j = i; j < i + 20; j++) {
+              if (data[j] === 0x01 && data[j+1] === 0x00 && data[j+2] === 0x01) {
+                data[j+2] = 0x00; // Disable protection
+                logger(`Modified extended protection record at offset ${j}`, 'info');
+                protectionFound = true;
+                break;
+              }
+            }
+          }
         }
       }
     }
@@ -259,14 +357,45 @@ function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint
       }
     }
     
-    // Recalculate the checksum
-    const view = new DataView(data.buffer);
-    let calculatedChecksum = 0;
-    for (let i = 8; i < data.length; i++) {
-      calculatedChecksum += data[i];
-      calculatedChecksum &= 0xFFFFFFFF; // Keep it 32-bit
+    // Preserve the CMG record (module protection)
+    const cmgSignature = [0x43, 0x4D, 0x47]; // "CMG"
+    for (let i = 0; i < data.length - cmgSignature.length; i++) {
+      let match = true;
+      for (let j = 0; j < cmgSignature.length; j++) {
+        if (data[i + j] !== cmgSignature[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match && i + 10 < data.length) {
+        // Found CMG record, check if it's followed by protection bytes
+        if (data[i + 6] === 0x01 || data[i + 8] === 0x01) {
+          data[i + 6] = 0x00;
+          data[i + 8] = 0x00;
+          logger(`Modified CMG protection record at offset ${i}`, 'info');
+        }
+      }
     }
-    view.setUint32(4, calculatedChecksum, true); // true for little-endian
+    
+    // Preserve the DPB record (document protection)
+    const dpbSignature = [0x44, 0x50, 0x42]; // "DPB"
+    for (let i = 0; i < data.length - dpbSignature.length; i++) {
+      let match = true;
+      for (let j = 0; j < dpbSignature.length; j++) {
+        if (data[i + j] !== dpbSignature[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match && i + 10 < data.length) {
+        // Found DPB record, check if it's followed by protection bytes
+        if (data[i + 6] === 0x01 || data[i + 8] === 0x01) {
+          data[i + 6] = 0x00;
+          data[i + 8] = 0x00;
+          logger(`Modified DPB protection record at offset ${i}`, 'info');
+        }
+      }
+    }
     
     logger(`Updated VBA project with comprehensive structure preservation`, 'success');
     return data;

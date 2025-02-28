@@ -222,8 +222,11 @@ export async function fixFileIntegrity(
           for (let i = cells.length - 1; i >= 0; i--) {
             const r = cells[i].getAttribute('r');
             if (!r || !/^[A-Z]+[0-9]+$/.test(r)) {
-              cells[i].parentNode.removeChild(cells[i]);
-              modified = true;
+              const parentNode = cells[i].parentNode;
+              if (parentNode) {
+                parentNode.removeChild(cells[i]);
+                modified = true;
+              }
             }
           }
           
