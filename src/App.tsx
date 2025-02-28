@@ -68,8 +68,7 @@ function App() {
   const [extractedModules, setExtractedModules] = useState<VBAModule[]>([]);
   const [logs, setLogs] = useState<Array<{ message: string; type: 'info' | 'error' | 'success' }>>([]);
   const [progress, setProgress] = useState(0);
-  const [activeTab, setActiveTab] = useState<'remove' | 'extract' | 'alternative'>('remove');
-  const [method, setMethod] = useState<'remove' | 'extract' | 'alternative'>('remove');
+  const [activeTab, setActiveTab] = useState('main');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { logError } = useErrorLogger();
 
@@ -154,7 +153,7 @@ function App() {
 
     try {
       const fileData = await file.arrayBuffer();
-      if (method === 'alternative') {
+      if (activeTab === 'alternate') {
         await injectVBACode(fileData, addLog);
       } else {
         // Existing processing logic
@@ -356,7 +355,208 @@ function App() {
                 </div>
                 
                 <div className="p-4">
-                  {/* Main content */}
+                  {/* Main method content */}
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <Upload className="text-blue-500" size={20} />
+                      <h2 className="text-lg font-medium">Upload Excel File</h2>
+                    </div>
+                    
+                    {/* File upload section */}
+                    <div 
+                      className={`border-2 border-dashed rounded-lg p-8 text-center ${
+                        isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-700'
+                      }`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleFileDrop}
+                    >
+                      {/* Keep all the original content from the main tab here */}
+                      {file ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-center space-x-2">
+                            <FileUp className="text-green-500" size={24} />
+                            <span className="font-medium">{file.name}</span>
+                            <span className="text-sm text-gray-500">
+                              ({(file.size / 1024).toFixed(2)} KB)
+                            </span>
+                          </div>
+                          <button
+                            className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+                            onClick={() => {
+                              setFile(null);
+                              setIsProcessing(false);
+                              setProcessedFile(null);
+                              setProgress(0);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <p className="text-gray-500 dark:text-gray-400">
+                            Drag and drop your Excel file here, or click to select
+                          </p>
+                          <button
+                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            Select File
+                          </button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".xlsm,.xlsb,.xls,.xlam"
+                            className="hidden"
+                            onChange={handleFileSelect}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Keep all the processing section from the main tab */}
+                    {file && (
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-2">
+                          <Shield className="text-blue-500" size={20} />
+                          <h2 className="text-lg font-medium">Remove VBA Password</h2>
+                        </div>
+                        
+                        <div className="p-4 border rounded-lg dark:border-gray-700">
+                          <div className="space-y-4">
+                            <p className="text-gray-600 dark:text-gray-300">
+                              Click the button below to remove the VBA password protection from your Excel file.
+                            </p>
+                            
+                            {!isProcessing && !processedFile && (
+                              <button
+                                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
+                                onClick={processFile}
+                              >
+                                Remove Password
+                              </button>
+                            )}
+                            
+                            {isProcessing && (
+                              <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                  <Loader2 className="animate-spin text-blue-500" size={20} />
+                                  <span className="text-blue-600 dark:text-blue-400">Processing...</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                                  <div 
+                                    className="bg-blue-500 h-2.5 rounded-full transition-all duration-300" 
+                                    style={{ width: `${progress * 100}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {processedFile && (
+                              <div className="space-y-4">
+                                <div className="flex items-center space-x-2">
+                                  <CheckCircle className="text-green-500" size={20} />
+                                  <span className="text-green-600 dark:text-green-400">Password successfully removed!</span>
+                                </div>
+                                
+                                <div className="flex space-x-2">
+                                  <button
+                                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 transition-colors flex items-center space-x-2"
+                                    onClick={downloadFile}
+                                  >
+                                    <Download size={16} />
+                                    <span>Download Unprotected File</span>
+                                  </button>
+                                  
+                                  <button
+                                    className="px-4 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors flex items-center space-x-2"
+                                    onClick={() => {
+                                      setIsProcessing(false);
+                                      setProcessedFile(null);
+                                      setProgress(0);
+                                    }}
+                                  >
+                                    <RefreshCw size={16} />
+                                    <span>Process Again</span>
+                                  </button>
+                                </div>
+                                
+                                <div className="text-sm text-gray-500 dark:text-gray-400">
+                                  Original file size: {(file.size / 1024).toFixed(2)} KB, 
+                                  Processed file size: {(processedFile.size / 1024).toFixed(2)} KB
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* VBA Code Extraction Section */}
+                    {file && (
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-2">
+                          <Code className="text-blue-500" size={20} />
+                          <h2 className="text-lg font-medium">Extract VBA Code</h2>
+                        </div>
+                        
+                        <div className="p-4 border rounded-lg dark:border-gray-700">
+                          <div className="space-y-4">
+                            <p className="text-gray-600 dark:text-gray-300">
+                              Extract all VBA code from the Excel file for review or backup.
+                            </p>
+                            
+                            {!isProcessing && !extractedModules && (
+                              <button
+                                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700 transition-colors"
+                                onClick={extractCode}
+                              >
+                                Extract VBA Code
+                              </button>
+                            )}
+                            
+                            {isProcessing && (
+                              <div className="flex items-center space-x-2">
+                                <Loader2 className="animate-spin text-purple-500" size={20} />
+                                <span className="text-purple-600 dark:text-purple-400">Extracting code...</span>
+                              </div>
+                            )}
+                            
+                            {extractedModules && (
+                              <div className="space-y-4">
+                                <div className="flex items-center space-x-2">
+                                  <CheckCircle className="text-green-500" size={20} />
+                                  <span className="text-green-600 dark:text-green-400">
+                                    Successfully extracted {extractedModules.length} VBA modules!
+                                  </span>
+                                </div>
+                                
+                                <button
+                                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 transition-colors flex items-center space-x-2"
+                                  onClick={downloadVBACode}
+                                >
+                                  <Download size={16} />
+                                  <span>Download VBA Code</span>
+                                </button>
+                                
+                                <div className="space-y-2">
+                                  <h3 className="font-medium">Extracted Modules:</h3>
+                                  <ul className="list-disc pl-5 space-y-1">
+                                    {extractedModules.map((module, index) => (
+                                      <li key={index} className="text-sm">
+                                        {module.name} ({module.type})
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
