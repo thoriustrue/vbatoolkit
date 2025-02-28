@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { ChangelogEntry, ChangelogChange } from '../types';
+import { ChangelogEntry } from '../types';
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
@@ -93,14 +93,14 @@ export function Changelog({ children }: ChangelogProps) {
  * Renders a formatted changelog entry
  * @param entry The changelog entry to render
  */
-export function ChangelogEntry({ entry }: { entry: ChangelogEntry }) {
+export function ChangelogEntryComponent({ entry }: { entry: ChangelogEntry }) {
   return (
     <div className="mb-4">
       <h4 className="font-semibold">
         Version {entry.version} <span className="text-gray-500 font-normal">({entry.date})</span>
       </h4>
       <ul className="mt-1 space-y-1">
-        {entry.changes.map((change: ChangelogChange, idx: number) => (
+        {entry.changes.map((change: { type: string; description: string }, idx: number) => (
           <li key={idx} className="text-sm">
             <span className={`
               inline-block px-2 py-0.5 rounded text-xs mr-2
