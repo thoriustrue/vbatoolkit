@@ -44,43 +44,6 @@ export async function validateZipFile(
 }
 
 /**
- * Validates Office file structure
- * @param zip The JSZip instance
- * @param logger Callback function for logging messages
- * @returns True if structure is valid, false otherwise
- */
-export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
-  try {
-    // Check for essential Office files
-    const requiredPaths = [
-      '[Content_Types].xml',
-      '_rels/.rels'
-    ];
-    
-    const missingPaths = requiredPaths.filter(path => !zip.files[path]);
-    
-    if (missingPaths.length > 0) {
-      logger(`Missing required Office files: ${missingPaths.join(', ')}`, 'error');
-      return false;
-    }
-    
-    // Check for Excel-specific files
-    const isExcel = zip.files['xl/workbook.xml'] !== undefined;
-    if (isExcel) {
-      logger('Valid Excel file structure detected', 'info');
-    } else {
-      logger('Not a valid Excel file structure', 'error');
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    logger(`Structure validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    return false;
-  }
-}
-
-/**
  * Validates Office file structure and required components
  */
 export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
@@ -101,8 +64,8 @@ export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
     // Validate ZIP structure
     const vbaProject = zip.files['xl/vbaProject.bin'];
     if (!vbaProject) {
-      logger('No VBA project found in file', 'error');
-      return false;
+      logger('No VBA project found in file', 'warning');
+      // Not returning false here as some Excel files might not have VBA
     }
     
     return true;
@@ -112,51 +75,38 @@ export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
   }
 }
 
-export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
-  const requiredEntries = [
-    '[Content_Types].xml',
-    'xl/workbook.xml',
-    'xl/_rels/workbook.xml.rels',
-    'xl/worksheets/sheet1.xml'
-  ];
+/**
+ * Validates Office structure (alias for validateOfficeCRC for backward compatibility)
+ */
+export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
+  return validateOfficeCRC(zip, logger);
+}
 
-  requiredEntries.forEach(entry => {
-    if (!zip.files[entry]) {
-      logger(`MISSING CRITICAL ENTRY: ${entry}`, 'error');
+/**
+ * Validates Excel-specific structure
+ */
+export function validateExcelStructure(zip: JSZip, logger: LoggerCallback): boolean {
+  try {
+    // Check for Excel-specific files
+    if (!zip.files['xl/workbook.xml']) {
+      logger('Missing workbook.xml - not a valid Excel file', 'error');
+      return false;
     }
-  });
-
-  // Validate workbook XML root element
-  const workbookEntry = zip.files['xl/workbook.xml'];
-  if (workbookEntry) {
-    const content = workbookEntry.async('string');
-    if (!content.includes('<workbook xmlns=')) {
-      logger('Invalid workbook.xml: Missing root namespace declaration', 'error');
+    
+    // Check for worksheets
+    const hasWorksheets = Object.keys(zip.files).some(
+      filename => filename.startsWith('xl/worksheets/sheet') && filename.endsWith('.xml')
+    );
+    
+    if (!hasWorksheets) {
+      logger('No worksheets found in Excel file', 'error');
+      return false;
     }
+    
+    logger('Excel structure validation passed', 'info');
+    return true;
+  } catch (error) {
+    logger(`Excel validation error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return false;
   }
-}
-
-// Re-export the function
-export const isValidZip = isValidZip;
-
-export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
-  // Implementation of validateOfficeStructure
-  // This function is now implemented in the validateOfficeStructure method
-  return true; // Placeholder return, actual implementation needed
-}
-
-export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
-  // Implementation of validateExcelStructure
-  // This function is now implemented in the validateExcelStructure method
-}
-
-export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
-  // Implementation of validateOfficeStructure
-  // This function is now implemented in the validateOfficeStructure method
-  return true; // Placeholder return, actual implementation needed
-}
-
-export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
-  // Implementation of validateExcelStructure
-  // This function is now implemented in the validateExcelStructure method
 } 
