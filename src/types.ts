@@ -1,5 +1,5 @@
 // Log types
-export type LogType = 'info' | 'error' | 'success';
+export type LogType = 'info' | 'error' | 'success' | 'warning';
 export interface LogEntry {
   message: string;
   type: LogType;

@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { LoggerCallback } from './types';
+import { LoggerCallback } from '../types';
 import { DOMParser, XMLSerializer } from 'xmldom';
 
 /**
@@ -273,15 +273,37 @@ export async function fixFileIntegrity(
     // 6. Remove any potentially corrupted files
     const knownCorruptPatterns = [
       'xl/ctrlProps/',
-      'xl/activeX/',
-      'xl/drawings/vmlDrawing'
+      'xl/activeX/'
+      // Removed 'xl/drawings/vmlDrawing' as these files are often needed for shapes and buttons
     ];
     
+    // Only remove files that are actually corrupted
     for (const pattern of knownCorruptPatterns) {
       const matchingFiles = Object.keys(zip.files).filter(path => path.includes(pattern));
       for (const file of matchingFiles) {
-        zip.remove(file);
-        logger(`Removed potentially problematic file: ${file}`, 'info');
+        try {
+          // Try to read the file first to check if it's actually corrupted
+          const fileObj = zip.file(file);
+          if (!fileObj) {
+            logger(`File not found: ${file}`, 'info');
+            continue;
+          }
+          
+          const content = await fileObj.async('uint8array');
+          if (content.length === 0) {
+            // Empty file, safe to remove
+            zip.remove(file);
+            logger(`Removed empty file: ${file}`, 'info');
+          } else if (pattern === 'xl/ctrlProps/' && content.length < 10) {
+            // Control properties files should have a minimum size
+            zip.remove(file);
+            logger(`Removed potentially corrupted file: ${file}`, 'info');
+          }
+        } catch (err) {
+          // If we can't read the file, it's likely corrupted
+          zip.remove(file);
+          logger(`Removed unreadable file: ${file}`, 'info');
+        }
       }
     }
     

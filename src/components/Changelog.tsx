@@ -4,6 +4,15 @@ import { ChangelogEntry, ChangelogChange } from '../types';
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: "1.1.1",
+    date: "2025-02-28",
+    changes: [
+      { type: "added", description: "Added automated changelog update script" },
+      { type: "added", description: "Added pre-commit hook for changelog reminders" },
+      { type: "fixed", description: "Fixed ES module compatibility issues" }
+    ]
+  },
+  {
     version: '1.1.0',
     date: '2025-03-01',
     changes: [
@@ -59,7 +68,10 @@ export function Changelog({ children }: ChangelogProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <details className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+    <details 
+      className="mt-4 text-sm text-gray-600 dark:text-gray-300"
+      open={isOpen}
+    >
       <summary 
         className="flex items-center cursor-pointer list-none"
         onClick={(e) => {

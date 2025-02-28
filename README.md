@@ -109,6 +109,27 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+### Updating the Changelog
+
+When making significant changes, please update the changelog:
+
+```bash
+# Add a new version with changes
+npm run changelog -- --version "1.2.0" --add "New feature" --fix "Bug fix" --change "Changed behavior"
+```
+
+### Setting Up the Pre-commit Hook
+
+To be reminded to update the changelog when committing changes:
+
+```bash
+# Make the script executable
+chmod +x scripts/pre-commit.js
+
+# Create a symlink in the git hooks directory
+ln -s ../../scripts/pre-commit.js .git/hooks/pre-commit
+```
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
