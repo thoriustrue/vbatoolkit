@@ -1,6 +1,6 @@
 import AdmZip from 'adm-zip';
 import { LoggerCallback } from './types';
-import { validate } from 'office-crc';
+import { crc32 } from 'crc-32';
 
 export async function validateZipFile(data: ArrayBuffer, logger: LoggerCallback) {
   try {
@@ -54,18 +54,11 @@ export function validateExcelStructure(zip: AdmZip, logger: LoggerCallback) {
 }
 
 export function validateOfficeCRC(zip: AdmZip, logger: LoggerCallback) {
-  const files = zip.getEntries().map(e => ({
-    name: e.entryName,
-    content: zip.readFile(e)
-  }));
-  
-  const results = validate(files);
-  
-  results.forEach(result => {
-    if (!result.valid) {
-      logger(`CRC mismatch in ${result.fileName}: ${result.message}`, 'error');
+  zip.getEntries().forEach(entry => {
+    const content = zip.readFile(entry);
+    const calculated = crc32(Buffer.from(content));
+    if (entry.header.crc !== calculated) {
+      logger(`CRC mismatch in ${entry.entryName}: Expected ${entry.header.crc} vs Calculated ${calculated}`, 'error');
     }
   });
-  
-  return results.every(r => r.valid);
 } 

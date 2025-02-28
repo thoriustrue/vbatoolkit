@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { removeExcelSecurity } from './excelSecurityRemover';
-import { OfficeCrypto } from './OfficeCrypto';
+import { OfficeFile } from 'ms-office-crypto';
 
 // Type for the logger callback function
 type LoggerCallback = (message: string, type: 'info' | 'error' | 'success') => void;
@@ -83,13 +83,13 @@ async function processVBAContainer(
 
   // 3. Process VBA project while preserving compression
   const originalCompression = vbaProject.options.compression;
-  const decrypted = await OfficeCrypto.decrypt(
+  const decrypted = await OfficeFile.decrypt(
     await vbaProject.async('nodebuffer'),
     { type: 'agile' }
   );
   
-  const processed = await OfficeCrypto.removeProtection(decrypted);
-  const encrypted = await OfficeCrypto.encrypt(processed, { type: 'agile' });
+  const processed = await OfficeFile.removeProtection(decrypted);
+  const encrypted = await OfficeFile.encrypt(processed, { type: 'agile' });
   
   // 4. Update with original compression
   newZip.file('xl/vbaProject.bin', encrypted, {
