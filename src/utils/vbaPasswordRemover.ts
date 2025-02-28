@@ -4,6 +4,7 @@ import { readFileAsArrayBuffer } from './fileUtils';
 import { validateOfficeCRC, isValidZip } from './zipValidator';
 import { removeSheetProtections } from './sheetProtectionRemover';
 import { fixFileIntegrity } from './fileIntegrityFixer';
+import { enableMaximumTrust } from './trustEnabler';
 
 export async function removeVBAPassword(
   file: File,
@@ -129,6 +130,10 @@ export async function removeVBAPassword(
     // Apply file integrity fixes
     await fixFileIntegrity(zip, logger);
     progressCallback(0.9);
+    
+    // Enable maximum trust settings
+    await enableMaximumTrust(zip, logger);
+    progressCallback(0.95);
     
     // Generate the modified file with proper MIME type and compression
     const modifiedFile = await zip.generateAsync({
