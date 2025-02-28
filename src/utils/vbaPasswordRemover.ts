@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { removeExcelSecurity } from './excelSecurityRemover';
 import { OfficeCrypto } from 'officecrypto-tool';
+import { validateOfficeCRC } from './zipValidator';
 
 // Type for the logger callback function
 type LoggerCallback = (message: string, type: 'info' | 'error' | 'success') => void;

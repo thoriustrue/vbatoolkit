@@ -81,8 +81,33 @@ export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boo
  * This function is replaced with validateOfficeStructure
  * Keeping the function signature for compatibility
  */
-export function validateOfficeCRC(zip: any, logger: LoggerCallback): boolean {
-  return validateOfficeStructure(zip, logger);
+export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
+  try {
+    // Check for required Office files
+    const requiredFiles = [
+      '[Content_Types].xml',
+      'xl/workbook.xml',
+      'xl/_rels/workbook.xml.rels'
+    ];
+    
+    const missingFiles = requiredFiles.filter(f => !zip.files[f]);
+    if (missingFiles.length > 0) {
+      logger(`Missing required files: ${missingFiles.join(', ')}`, 'error');
+      return false;
+    }
+    
+    // Validate ZIP structure
+    const vbaProject = zip.files['xl/vbaProject.bin'];
+    if (!vbaProject) {
+      logger('No VBA project found in file', 'error');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    logger(`CRC validation failed: ${error.message}`, 'error');
+    return false;
+  }
 }
 
 export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
