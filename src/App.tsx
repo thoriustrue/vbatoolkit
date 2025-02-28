@@ -1,201 +1,76 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { Upload, FileUp, Download, AlertCircle, CheckCircle, Info, Loader2, RefreshCw, Code, Shield, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Upload } from 'lucide-react';
 import { removeVBAPassword } from './utils/vbaPasswordRemover';
-import { extractVBACode, VBAModule, createVBACodeFile } from './utils/vbaCodeExtractor';
+import { extractVBACode, VBAModule, createVBACodeFile } from './utils/vbaCodeExtractor/index';
 import { injectVBACode } from './utils/vbaCodeInjector';
-import { ErrorBoundary, ErrorLogPanel, useErrorLogger } from './components/ErrorLogger';
+import { ErrorBoundary, useErrorLogger } from './components/ErrorLogger';
 import { ErrorLog } from './components/ErrorLog';
-
-// Define changelog data directly in App.tsx to avoid import issues
-interface ChangelogEntry {
-  version: string;
-  date: string;
-  changes: {
-    type: 'added' | 'fixed' | 'changed' | 'removed';
-    description: string;
-  }[];
-}
-
-const CHANGELOG_DATA: ChangelogEntry[] = [
-  {
-    version: '0.1.1',
-    date: '2024-06-20',
-    changes: [
-      { type: 'added', description: 'Added VBA password removal functionality' },
-      { type: 'added', description: 'Implemented macro auto-enable features' },
-      { type: 'added', description: 'Added error logging system' }
-    ]
-  },
-  {
-    version: '0.1.0',
-    date: '2024-06-15',
-    changes: [
-      { type: 'added', description: 'Initial release of VBA Toolkit' },
-      { type: 'added', description: 'Basic file handling capabilities' },
-      { type: 'added', description: 'User interface for file operations' }
-    ]
-  }
-];
-
-// Simple Changelog component defined directly in App.tsx
-function Changelog({ children }: { children?: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <details className="mt-4 text-sm text-gray-600 dark:text-gray-300">
-      <summary 
-        className="flex items-center cursor-pointer list-none"
-        onClick={(e) => {
-          e.preventDefault();
-          setIsOpen(!isOpen);
-        }}
-      >
-        {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        <span className="ml-2">Version History</span>
-      </summary>
-      <div className="ml-6 mt-2 space-y-2">
-        {children}
-      </div>
-    </details>
-  );
-}
+import { FileUploader } from './components/FileUploader';
+import { LogViewer } from './components/LogViewer';
+import { ProcessingActions } from './components/ProcessingActions';
+import { Changelog, ChangelogEntry as ChangelogEntryComponent } from './components/Changelog';
+import { CHANGELOG_DATA } from './components/Changelog';
+import { LogEntry, LogType, ChangelogChange } from './types';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedFile, setProcessedFile] = useState<Blob | null>(null);
   const [extractedModules, setExtractedModules] = useState<VBAModule[]>([]);
-  const [logs, setLogs] = useState<Array<{ message: string; type: 'info' | 'error' | 'success' }>>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [progress, setProgress] = useState(0);
   const [activeTab, setActiveTab] = useState('main');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { logError } = useErrorLogger();
 
-  const addLog = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
+  const addLog = useCallback((message: string, type: LogType = 'info') => {
     setLogs(prev => [...prev, { message, type }]);
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  const validateFile = (file: File): boolean => {
-    const validExtensions = ['.xlsm', '.xls', '.xlsb'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!validExtensions.includes(fileExtension)) {
-      addLog(`Invalid file type: ${fileExtension}. Please upload .xlsm, .xls, or .xlsb files.`, 'error');
-      return false;
-    }
-    
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      addLog('File is too large. Maximum size is 50MB.', 'error');
-      return false;
-    }
-    
-    return true;
-  };
-
-  const handleFileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (validateFile(droppedFile)) {
-        setFile(droppedFile);
-        addLog(`File selected: ${droppedFile.name} (${(droppedFile.size / 1024).toFixed(2)} KB)`, 'info');
-        setProcessedFile(null);
-        setExtractedModules([]);
-        setProgress(0);
-        setLogs([]);
-      }
-    }
-  }, [addLog]);
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const selectedFile = e.target.files[0];
-      if (validateFile(selectedFile)) {
-        setFile(selectedFile);
-        addLog(`File selected: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(2)} KB)`, 'info');
-        setProcessedFile(null);
-        setExtractedModules([]);
-        setProgress(0);
-        setLogs([]);
-      }
-    }
-  }, [addLog]);
-
-  const handleButtonClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
   const resetProcess = useCallback(() => {
+    setFile(null);
+    setProcessedFile(null);
+    setExtractedModules([]);
+    setLogs([]);
+    setProgress(0);
+  }, []);
+
+  const handleFileSelect = useCallback((selectedFile: File) => {
+    setFile(selectedFile);
     setProcessedFile(null);
     setExtractedModules([]);
     setProgress(0);
     setLogs([]);
-    addLog(`Ready to process file: ${file?.name}`, 'info');
-  }, [file, addLog]);
+  }, []);
 
-  const handleFileUpload = async (file: File) => {
-    if (!validateFile(file)) return;
-
-    setIsProcessing(true);
-    addLog('Processing file...', 'info');
-
-    try {
-      const fileData = await file.arrayBuffer();
-      if (activeTab === 'alternate') {
-        await injectVBACode(fileData, addLog);
-      } else {
-        // Existing processing logic
-      }
-    } catch (error) {
-      addLog(`Error processing file: ${error.message}`, 'error');
-      logError(error, 'fileProcessing'); // Log to technical error panel
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const processFile = useCallback(async () => {
+  const removePassword = useCallback(async () => {
     if (!file) return;
     
     setIsProcessing(true);
     setLogs([]);
     setProgress(0);
     addLog('Starting VBA password removal process...', 'info');
-    addLog('Auto-enabling macros and external links...', 'info');
     
     try {
-      const result = await removeVBAPassword(file, (message, type) => {
+      const result = await removeVBAPassword(file, (message: string, type: LogType) => {
         addLog(message, type);
-      }, (progressValue) => {
-        setProgress(progressValue);
+      }, (progressValue: number) => {
+        setProgress(progressValue * 100);
       });
       
       if (result) {
         setProcessedFile(result);
         addLog('VBA password removal completed successfully!', 'success');
-        addLog(`Original file size: ${(file.size / 1024).toFixed(2)} KB, Processed file size: ${(result.size / 1024).toFixed(2)} KB`, 'info');
       } else {
-        addLog('Failed to process the file. See errors above.', 'error');
+        addLog('Failed to remove VBA password. See errors above.', 'error');
       }
     } catch (error) {
+      logError(error instanceof Error ? error : new Error(String(error)));
       addLog(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
     } finally {
       setIsProcessing(false);
       setProgress(100);
     }
-  }, [file, addLog]);
+  }, [file, addLog, logError]);
 
   const extractCode = useCallback(async () => {
     if (!file) return;
@@ -272,14 +147,6 @@ function App() {
     addLog(`VBA code downloaded as: ${fileName}`, 'success');
   }, [extractedModules, file, addLog]);
 
-  const getLogIcon = (type: 'info' | 'error' | 'success') => {
-    switch (type) {
-      case 'info': return <Info className="w-4 h-4 text-blue-500" />;
-      case 'error': return <AlertCircle className="w-4 h-4 text-red-500" />;
-      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
-    }
-  };
-
   const clearLogs = useCallback(() => {
     setLogs([]);
   }, []);
@@ -299,555 +166,61 @@ function App() {
             <div className="px-4 py-6 sm:px-0">
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="mb-6">
-                  <h2 className="text-lg font-medium text-gray-900 mb-2">Upload Excel File</h2>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Upload an Excel file (.xlsm, .xls, .xlsb) with VBA code to remove password protection or extract the VBA code.
-                    All processing happens in your browser - no files are sent to any server.
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">VBA Password Remover & Code Extractor</h2>
+                  <p className="text-gray-600">
+                    Upload an Excel file with VBA macros to remove password protection or extract the VBA code.
                   </p>
-                  
-                  <div 
-                    className={`border-2 border-dashed rounded-lg p-8 text-center ${
-                      isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300'
-                    } ${file ? 'bg-green-50' : ''}`}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleFileDrop}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      className="hidden"
-                      accept=".xlsm,.xls,.xlsb"
-                      onChange={handleFileSelect}
+                </div>
+                
+                {!file ? (
+                  <FileUploader 
+                    onFileSelect={handleFileSelect}
+                    acceptedExtensions={['.xlsm', '.xls', '.xlsb']}
+                    maxSizeInMB={50}
+                    addLog={addLog}
+                  />
+                ) : (
+                  <>
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Selected file:</strong> {file.name} ({(file.size / 1024).toFixed(2)} KB)
+                      </p>
+                    </div>
+                    
+                    <ProcessingActions
+                      file={file}
+                      isProcessing={isProcessing}
+                      processedFile={processedFile}
+                      extractedModules={extractedModules}
+                      progress={progress}
+                      onRemovePassword={removePassword}
+                      onExtractCode={extractCode}
+                      onDownloadFile={downloadFile}
+                      onDownloadVBACode={downloadVBACode}
+                      onReset={resetProcess}
                     />
                     
-                    <div className="space-y-2">
-                      <div className="flex justify-center">
-                        <FileUp className="h-12 w-12 text-gray-400" />
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {file ? (
-                          <p className="font-medium text-green-600">{file.name} selected ({(file.size / 1024).toFixed(2)} KB)</p>
-                        ) : (
-                          <>
-                            <p className="font-medium">Drag and drop your Excel file here</p>
-                            <p>or</p>
-                          </>
-                        )}
-                      </div>
-                      {!file && (
-                        <button
-                          type="button"
-                          onClick={handleButtonClick}
-                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                          Select File
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                {file && (
-                  <div className="mt-6 space-y-4">
-                    {/* Tabs */}
-                    <div className="border-b border-gray-200">
-                      <nav className="-mb-px flex" aria-label="Tabs">
-                        <button
-                          onClick={() => setActiveTab('remove')}
-                          className={`${
-                            activeTab === 'remove'
-                              ? 'border-indigo-500 text-indigo-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                          } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
-                        >
-                          Remove VBA Password
-                        </button>
-                        <button
-                          onClick={() => setActiveTab('extract')}
-                          className={`${
-                            activeTab === 'extract'
-                              ? 'border-indigo-500 text-indigo-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                          } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
-                        >
-                          Extract VBA Code
-                        </button>
-                        <button
-                          onClick={() => setActiveTab('alternative')}
-                          className={`${
-                            activeTab === 'alternative'
-                              ? 'border-indigo-500 text-indigo-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                          } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
-                        >
-                          Alternative Method
-                        </button>
-                      </nav>
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-md font-medium text-gray-900">
-                        {activeTab === 'remove' ? 'Remove VBA Password' : activeTab === 'extract' ? 'Extract VBA Code' : 'Alternative Method'}
-                      </h3>
-                      <div className="flex space-x-2">
-                        {!isProcessing && activeTab === 'remove' && !processedFile && (
-                          <button
-                            type="button"
-                            onClick={processFile}
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo -700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                          >
-                            <Shield className="h-4 w-4 mr-2 " />
-                            Remove VBA Password
-                          </button>
-                        )}
-                        
-                        {!isProcessing && activeTab === 'extract' && extractedModules.length === 0 && (
-                          <button
-                            type="button"
-                            onClick={extractCode}
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                          >
-                            <Code className="h-4 w-4 mr-2" />
-                            Extract VBA Code
-                          </button>
-                        )}
-                        
-                        {activeTab === 'remove' && processedFile && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={resetProcess}
-                              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                            >
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Try Again
-                            </button>
-                            <button
-                              type="button"
-                              onClick={downloadFile}
-                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                            >
-                              <Download className="h-4 w-4 mr-2" />
-                              Download Unprotected File
-                            </button>
-                          </>
-                        )}
-                        
-                        {activeTab === 'extract' && extractedModules.length > 0 && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={resetProcess}
-                              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                            >
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Try Again
-                            </button>
-                            <button
-                              type="button"
-                              onClick={downloadVBACode}
-                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                            >
-                              <Download className="h-4 w-4 mr-2" />
-                              Download VBA Code
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Progress bar */}
-                    {(isProcessing || progress > 0) && (
-                      <div className="mt-2">
-                        <div className="relative pt-1">
-                          <div className="flex mb-2 items-center justify-between">
-                            <div>
-                              <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200">
-                                Progress
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-xs font-semibold inline-block text-indigo-600">
-                                {progress}%
-                              </span>
-                            </div>
-                          </div>
-                          <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-indigo-200">
-                            <div 
-                              style={{ width: `${progress}%` }} 
-                              className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 transition-all duration-300"
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Extracted modules list */}
-                    {activeTab === 'extract' && extractedModules.length > 0 && (
-                      <div className="mt-4">
-                        <h3 className="text-md font-medium text-gray-900 mb-2">Extracted VBA Modules</h3>
-                        <div className="bg-gray-50 rounded-md p-3 border border-gray-200 max-h-64 overflow-y-auto">
-                          <ul className="divide-y divide-gray-200">
-                            {extractedModules.map((module, index) => (
-                              <li key={index} className="py-3">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900">{module.name}</p>
-                                    <p className="text-sm text-gray-500">{module.type}</p>
-                                  </div>
-                                  <div className="text-sm text-gray-500">
-                                    {(module.code.length / 1024).toFixed(2)} KB
-                                  </div>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Process log */}
-                    <div className="mt-4">
-                      <h3 className="text-md font-medium text-gray-900 mb-2">Process Log</h3>
-                      <div className="bg-gray-50 rounded-md p-3 h-64 overflow-y-auto border border-gray-200">
-                        {logs.length === 0 ? (
-                          <p className="text-gray-500 text-sm italic">Process logs will appear here...</p>
-                        ) : (
-                          <div className="space-y-1">
-                            {logs.map((log, index) => (
-                              <div key={index} className="flex items-start text-sm">
-                                <span className="mr-2 mt-0.5">{getLogIcon(log.type)}</span>
-                                <span className={`${
-                                  log.type === 'error' ? 'text-red-600' : 
-                                  log.type === 'success' ? 'text-green-600' : 'text-gray-700'
-                                }`}>
-                                  {log.message}
-                                </span>
-                              </div>
-                            ))}
-                            {isProcessing && (
-                              <div className="flex items-center text-sm text-indigo-600">
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                <span>Processing...</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    <LogViewer logs={logs} onClearLogs={clearLogs} />
+                  </>
                 )}
                 
-                {/* Feature descriptions */}
-                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="p-4 bg-blue-50 rounded-md border border-blue-100">
-                    <h3 className="text-md font-medium text-blue-800 mb-2 flex items-center">
-                      <Shield className="w-5 h-5 mr-2" />
-                      Remove VBA Password
-                    </h3>
-                    <p className="text-sm text-blue-700 mb-2">
-                      This tool removes password protection from VBA projects in Excel files, allowing you to access and edit the VBA code without knowing the original password.
-                    </p>
-                    <ul className="text-sm text-blue-700 list-disc pl-5 space-y-1">
-                      <li>Works with Excel 2007-2022 files (.xlsm, .xls, .xlsb)</li>
-                      <li>Removes project-level password protection</li>
-                      <li>Removes sheet and workbook protection</li>
-                      <li>Auto-enables macros and external links</li>
-                      <li>100% client-side processing (no data is sent to any server)</li>
-                    </ul>
-                  </div>
-                  
-                  <div className="p-4 bg-indigo-50 rounded-md border border-indigo-100">
-                    <h3 className="text-md font-medium text-indigo-800 mb-2 flex items-center">
-                      <Code className="w-5 h-5 mr-2" />
-                      Extract VBA Code
-                    </h3>
-                    <p className="text-sm text-indigo-700 mb-2">
-                      This tool extracts all VBA code modules from Excel files, allowing you to view, backup, or reuse the code without opening Excel.
-                    </p>
-                    <ul className="text-sm text-indigo-700 list-disc pl-5 space-y-1">
-                      <li>Extracts all types of VBA modules (standard, class, form, document)</li>
-                      <li>Preserves module names and types</li>
-                      <li>Exports code to a plain text file for easy viewing or backup</li>
-                      <li>Works with both protected and unprotected VBA projects</li>
-                    </ul>
-                  </div>
-                </div>
-                
-<<<<<<< HEAD
-<<<<<<< HEAD
-                <div className="p-4">
-                  {/* Main method content */}
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Upload className="text-blue-500" size={20} />
-                      <h2 className="text-lg font-medium">Upload Excel File</h2>
-                    </div>
-                    
-                    {/* File upload section */}
-                    <div 
-                      className={`border-2 border-dashed rounded-lg p-8 text-center ${
-                        isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-700'
-                      }`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleFileDrop}
-                    >
-                      {/* Keep all the original content from the main tab here */}
-                      {file ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-center space-x-2">
-                            <FileUp className="text-green-500" size={24} />
-                            <span className="font-medium">{file.name}</span>
-                            <span className="text-sm text-gray-500">
-                              ({(file.size / 1024).toFixed(2)} KB)
-                            </span>
-                          </div>
-                          <button
-                            className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
-                            onClick={() => {
-                              setFile(null);
-                              setIsProcessing(false);
-                              setProcessedFile(null);
-                              setProgress(0);
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <p className="text-gray-500 dark:text-gray-400">
-                            Drag and drop your Excel file here, or click to select
-                          </p>
-                          <button
-                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            Select File
-                          </button>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".xlsm,.xlsb,.xls,.xlam"
-                            className="hidden"
-                            onChange={handleFileSelect}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Keep all the processing section from the main tab */}
-                    {file && (
-                      <div className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <Shield className="text-blue-500" size={20} />
-                          <h2 className="text-lg font-medium">Remove VBA Password</h2>
-                        </div>
-                        
-                        <div className="p-4 border rounded-lg dark:border-gray-700">
-                          <div className="space-y-4">
-                            <p className="text-gray-600 dark:text-gray-300">
-                              Click the button below to remove the VBA password protection from your Excel file.
-                            </p>
-                            
-                            {!isProcessing && !processedFile && (
-                              <button
-                                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
-                                onClick={processFile}
-                              >
-                                Remove Password
-                              </button>
-                            )}
-                            
-                            {isProcessing && (
-                              <div className="space-y-2">
-                                <div className="flex items-center space-x-2">
-                                  <Loader2 className="animate-spin text-blue-500" size={20} />
-                                  <span className="text-blue-600 dark:text-blue-400">Processing...</span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                                  <div 
-                                    className="bg-blue-500 h-2.5 rounded-full transition-all duration-300" 
-                                    style={{ width: `${progress * 100}%` }}
-                                  ></div>
-                                </div>
-                              </div>
-                            )}
-                            
-                            {processedFile && (
-                              <div className="space-y-4">
-                                <div className="flex items-center space-x-2">
-                                  <CheckCircle className="text-green-500" size={20} />
-                                  <span className="text-green-600 dark:text-green-400">Password successfully removed!</span>
-                                </div>
-                                
-                                <div className="flex space-x-2">
-                                  <button
-                                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 transition-colors flex items-center space-x-2"
-                                    onClick={downloadFile}
-                                  >
-                                    <Download size={16} />
-                                    <span>Download Unprotected File</span>
-                                  </button>
-                                  
-                                  <button
-                                    className="px-4 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors flex items-center space-x-2"
-                                    onClick={() => {
-                                      setIsProcessing(false);
-                                      setProcessedFile(null);
-                                      setProgress(0);
-                                    }}
-                                  >
-                                    <RefreshCw size={16} />
-                                    <span>Process Again</span>
-                                  </button>
-                                </div>
-                                
-                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                  Original file size: {(file.size / 1024).toFixed(2)} KB, 
-                                  Processed file size: {(processedFile.size / 1024).toFixed(2)} KB
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* VBA Code Extraction Section */}
-                    {file && (
-                      <div className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <Code className="text-blue-500" size={20} />
-                          <h2 className="text-lg font-medium">Extract VBA Code</h2>
-                        </div>
-                        
-                        <div className="p-4 border rounded-lg dark:border-gray-700">
-                          <div className="space-y-4">
-                            <p className="text-gray-600 dark:text-gray-300">
-                              Extract all VBA code from the Excel file for review or backup.
-                            </p>
-                            
-                            {!isProcessing && !extractedModules && (
-                              <button
-                                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700 transition-colors"
-                                onClick={extractCode}
-                              >
-                                Extract VBA Code
-                              </button>
-                            )}
-                            
-                            {isProcessing && (
-                              <div className="flex items-center space-x-2">
-                                <Loader2 className="animate-spin text-purple-500" size={20} />
-                                <span className="text-purple-600 dark:text-purple-400">Extracting code...</span>
-                              </div>
-                            )}
-                            
-                            {extractedModules && (
-                              <div className="space-y-4">
-                                <div className="flex items-center space-x-2">
-                                  <CheckCircle className="text-green-500" size={20} />
-                                  <span className="text-green-600 dark:text-green-400">
-                                    Successfully extracted {extractedModules.length} VBA modules!
-                                  </span>
-                                </div>
-                                
-                                <button
-                                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 transition-colors flex items-center space-x-2"
-                                  onClick={downloadVBACode}
-                                >
-                                  <Download size={16} />
-                                  <span>Download VBA Code</span>
-                                </button>
-                                
-                                <div className="space-y-2">
-                                  <h3 className="font-medium">Extracted Modules:</h3>
-                                  <ul className="list-disc pl-5 space-y-1">
-                                    {extractedModules.map((module, index) => (
-                                      <li key={index} className="text-sm">
-                                        {module.name} ({module.type})
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-=======
-=======
->>>>>>> parent of 998746b (Fixes)
-                {/* Disclaimer */}
-                <div className="mt-8 p-4 bg-yellow-50 rounded-md border border-yellow-100">
-                  <h3 className="text-md font-medium text-yellow-800 mb-2 flex items-center">
-                    <AlertCircle className="w-5 h-5 mr-2" />
-                    Ethical Usage Disclaimer
-                  </h3>
-                  <p className="text-sm text-yellow-700">
-                    These tools should only be used on Excel files that you own or have explicit permission to modify.
-                    They are intended for legitimate purposes, such as accessing your own VBA projects
-                    when you've forgotten the password or backing up your code. Unauthorized access to protected files may violate applicable laws.
-                  </p>
-                </div>
-                
-                {/* How it works */}
-                <div className="mt-8">
-                  <h3 className="text-md font-medium text-gray-900 mb-2">How It Works</h3>
-                  <div className="text-sm text-gray-600 space-y-2">
-                    <p>
-                      <strong>Password Removal:</strong> This tool works by manipulating the binary structure of the Excel VBA project to remove password protection.
-                      It locates the password hash in the VBA project structure and removes it, allowing you to access the VBA code without needing the original password.
-                      It also removes sheet and workbook protection and configures security settings to auto-enable macros and external links.
-                    </p>
-                    <p>
-                      <strong>Code Extraction:</strong> This tool analyzes the VBA project structure in the Excel file and extracts all code modules.
-                      It identifies different module types (standard modules, class modules, forms, and document modules) and exports them to a text file.
-                    </p>
-                    <p>
-                      The entire process happens in your browser - no data is sent to any server.
-                    </p>
-                    <p>
-                      Supported Excel versions: Excel 2007-2022 (.xlsm, .xls, .xlsb formats)
-                    </p>
-<<<<<<< HEAD
->>>>>>> parent of 998746b (Fixes)
-=======
->>>>>>> parent of 998746b (Fixes)
-                  </div>
-                </div>
+                <Changelog>
+                  {CHANGELOG_DATA.map((entry) => (
+                    <ChangelogEntryComponent key={entry.version} entry={entry} />
+                  ))}
+                </Changelog>
               </div>
             </div>
           </div>
         </main>
         
-        {/* Footer with changelog */}
-        <footer className="mt-auto p-4 border-t border-gray-200 dark:border-gray-700">
-          <Changelog>
-            {CHANGELOG_DATA.map((entry, index) => (
-              <div key={index} className="space-y-2 mb-4">
-                <h3 className="font-medium">v{entry.version} - {entry.date}</h3>
-                <ul className="list-disc pl-4 space-y-1">
-                  {entry.changes.map((change, i) => (
-                    <li key={i} className={
-                      change.type === 'added' ? 'text-green-600 dark:text-green-400' :
-                      change.type === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
-                      'text-blue-600 dark:text-blue-400'
-                    }>
-                      {change.description}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </Changelog>
+        <footer className="bg-white mt-8 py-4 border-t">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="text-center text-sm text-gray-500">
+              Excel VBA Tools - For educational purposes only. Use responsibly.
+            </p>
+          </div>
         </footer>
-        
-        <ErrorLog logs={logs} onClear={clearLogs} />
       </div>
     </ErrorBoundary>
   );

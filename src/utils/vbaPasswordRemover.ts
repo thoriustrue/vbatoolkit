@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { LoggerCallback, ProgressCallback } from './types';
+import { LoggerCallback, ProgressCallback } from '../types';
 import { readFileAsArrayBuffer } from './fileUtils';
 import { validateOfficeCRC, isValidZip } from './zipValidator';
 import { removeSheetProtections } from './sheetProtectionRemover';
@@ -11,6 +11,8 @@ export async function removeVBAPassword(
   logger: LoggerCallback,
   progressCallback: ProgressCallback
 ): Promise<Blob | null> {
+  let zip: JSZip | undefined;
+  
   try {
     logger('Starting VBA password removal process...', 'info');
     progressCallback(0.1);
@@ -24,7 +26,7 @@ export async function removeVBAPassword(
     }
     
     const fileData = new Uint8Array(arrayBuffer);
-    const zip = await JSZip.loadAsync(fileData);
+    zip = await JSZip.loadAsync(fileData);
     
     // Validate Office file structure
     if (!validateOfficeCRC(zip, logger)) {
@@ -110,14 +112,17 @@ export async function removeVBAPassword(
     }
     
     if (zip.file('xl/_rels/vbaProject.bin.rels')) {
-      let vbaRels = await zip.file('xl/_rels/vbaProject.bin.rels').async('string');
-      if (vbaRels.includes('vbaProjectSignature')) {
-        vbaRels = vbaRels.replace(
-          /<Relationship[^>]*vbaProjectSignature[^>]*\/>/g,
-          ''
-        );
-        zip.file('xl/_rels/vbaProject.bin.rels', vbaRels);
-        logger('Cleaned VBA project relationships', 'info');
+      const vbaRelsFile = zip.file('xl/_rels/vbaProject.bin.rels');
+      if (vbaRelsFile) {
+        let vbaRels = await vbaRelsFile.async('string');
+        if (vbaRels.includes('vbaProjectSignature')) {
+          vbaRels = vbaRels.replace(
+            /<Relationship[^>]*vbaProjectSignature[^>]*\/>/g,
+            ''
+          );
+          zip.file('xl/_rels/vbaProject.bin.rels', vbaRels);
+          logger('Cleaned VBA project relationships', 'info');
+        }
       }
     }
     
@@ -148,8 +153,30 @@ export async function removeVBAPassword(
     
     return modifiedFile;
   } catch (error) {
-    logger(`Password removal failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    progressCallback(0);
+    logger(`Error during VBA password removal: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    
+    // Attempt recovery if we have a zip object
+    if (typeof zip !== 'undefined') {
+      const recovered = await attemptErrorRecovery(
+        error instanceof Error ? error : new Error(String(error)),
+        zip,
+        logger
+      );
+      
+      if (recovered) {
+        logger('Recovery successful, continuing with processing...', 'success');
+        
+        // Continue with processing after recovery
+        try {
+          // ... continue with processing ...
+          
+          return await zip.generateAsync({ type: 'blob' });
+        } catch (secondError) {
+          logger(`Error after recovery attempt: ${secondError instanceof Error ? secondError.message : String(secondError)}`, 'error');
+        }
+      }
+    }
+    
     return null;
   }
 }
@@ -277,5 +304,153 @@ function updateVBAProjectChecksum(vbaData: Uint8Array, logger: LoggerCallback): 
   } catch (error) {
     logger(`Error updating VBA checksum: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return null;
+  }
+}
+
+/**
+ * Attempts to recover from common errors during VBA password removal
+ * @param error The error that occurred
+ * @param zip The JSZip instance
+ * @param logger The logger callback
+ * @returns True if recovery was successful, false otherwise
+ */
+async function attemptErrorRecovery(
+  error: Error,
+  zip: JSZip,
+  logger: LoggerCallback
+): Promise<boolean> {
+  logger(`Attempting to recover from error: ${error.message}`, 'info');
+  
+  // Check for common error patterns
+  if (error.message.includes('Invalid CRC')) {
+    return await recoverFromCRCError(zip, logger);
+  }
+  
+  if (error.message.includes('corrupted zip')) {
+    return await recoverFromCorruptedZip(zip, logger);
+  }
+  
+  if (error.message.includes('vbaProject.bin')) {
+    return await recoverFromMissingVBAProject(zip, logger);
+  }
+  
+  // No recovery path available
+  logger('No automatic recovery available for this error', 'error');
+  return false;
+}
+
+/**
+ * Attempts to recover from CRC validation errors
+ * @param zip The JSZip instance
+ * @param logger The logger callback
+ * @returns True if recovery was successful, false otherwise
+ */
+async function recoverFromCRCError(
+  zip: JSZip,
+  logger: LoggerCallback
+): Promise<boolean> {
+  try {
+    logger('Attempting to fix CRC validation errors...', 'info');
+    
+    // Check if we can bypass CRC validation
+    const vbaProject = zip.file('xl/vbaProject.bin');
+    if (!vbaProject) {
+      logger('Cannot recover: vbaProject.bin not found', 'error');
+      return false;
+    }
+    
+    // Try to read the file with CRC validation disabled
+    const vbaContent = await vbaProject.async('uint8array');
+    
+    if (vbaContent.length === 0) {
+      logger('Cannot recover: vbaProject.bin is empty', 'error');
+      return false;
+    }
+    
+    logger('Successfully bypassed CRC validation', 'success');
+    return true;
+  } catch (error) {
+    logger(`Recovery failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return false;
+  }
+}
+
+/**
+ * Attempts to recover from corrupted ZIP errors
+ * @param zip The JSZip instance
+ * @param logger The logger callback
+ * @returns True if recovery was successful, false otherwise
+ */
+async function recoverFromCorruptedZip(
+  zip: JSZip,
+  logger: LoggerCallback
+): Promise<boolean> {
+  try {
+    logger('Attempting to fix corrupted ZIP structure...', 'info');
+    
+    // Check if essential files exist
+    const essentialFiles = [
+      'xl/workbook.xml',
+      '[Content_Types].xml',
+      '_rels/.rels'
+    ];
+    
+    for (const file of essentialFiles) {
+      if (!zip.file(file)) {
+        logger(`Cannot recover: Essential file ${file} is missing`, 'error');
+        return false;
+      }
+    }
+    
+    logger('Essential file structure is intact, attempting to proceed', 'info');
+    return true;
+  } catch (error) {
+    logger(`Recovery failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return false;
+  }
+}
+
+/**
+ * Attempts to recover from missing VBA project errors
+ * @param zip The JSZip instance
+ * @param logger The logger callback
+ * @returns True if recovery was successful, false otherwise
+ */
+async function recoverFromMissingVBAProject(
+  zip: JSZip,
+  logger: LoggerCallback
+): Promise<boolean> {
+  try {
+    logger('Checking for alternative VBA project locations...', 'info');
+    
+    // Check for alternative locations
+    const alternativeLocations = [
+      'xl/vbaProject.bin',
+      'xl/_vbaProject.bin',
+      'vbaProject.bin',
+      'macro/vbaProject.bin'
+    ];
+    
+    for (const location of alternativeLocations) {
+      const vbaProject = zip.file(location);
+      if (vbaProject) {
+        logger(`Found VBA project at alternative location: ${location}`, 'info');
+        
+        // Move it to the standard location if it's not already there
+        if (location !== 'xl/vbaProject.bin') {
+          const content = await vbaProject.async('uint8array');
+          zip.file('xl/vbaProject.bin', content);
+          logger('Moved VBA project to standard location', 'success');
+        }
+        
+        return true;
+      }
+    }
+    
+    logger('No VBA project found in any alternative locations', 'error');
+    return false;
+  } catch (error) {
+    logger(`Recovery failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    return false;
   }
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Clock, ChevronDown, ChevronUp, Tag } from 'lucide-react';
-import { ChangelogEntry } from '../types';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChangelogEntry, ChangelogChange } from '../types';
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
@@ -47,7 +47,15 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
   }
 ];
 
-export function Changelog({ children }: { children: React.ReactNode }) {
+interface ChangelogProps {
+  children?: React.ReactNode;
+}
+
+/**
+ * Changelog component that displays version history in a collapsible section
+ * @param children Optional content to display inside the changelog
+ */
+export function Changelog({ children }: ChangelogProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -66,5 +74,35 @@ export function Changelog({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </details>
+  );
+}
+
+/**
+ * Renders a formatted changelog entry
+ * @param entry The changelog entry to render
+ */
+export function ChangelogEntry({ entry }: { entry: ChangelogEntry }) {
+  return (
+    <div className="mb-4">
+      <h4 className="font-semibold">
+        Version {entry.version} <span className="text-gray-500 font-normal">({entry.date})</span>
+      </h4>
+      <ul className="mt-1 space-y-1">
+        {entry.changes.map((change: ChangelogChange, idx: number) => (
+          <li key={idx} className="text-sm">
+            <span className={`
+              inline-block px-2 py-0.5 rounded text-xs mr-2
+              ${change.type === 'added' ? 'bg-green-100 text-green-800' : ''}
+              ${change.type === 'fixed' ? 'bg-blue-100 text-blue-800' : ''}
+              ${change.type === 'changed' ? 'bg-yellow-100 text-yellow-800' : ''}
+              ${change.type === 'removed' ? 'bg-red-100 text-red-800' : ''}
+            `}>
+              {change.type}
+            </span>
+            {change.description}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 } 
