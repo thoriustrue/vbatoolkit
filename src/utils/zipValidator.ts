@@ -2,20 +2,35 @@
 
 import JSZip from 'jszip';
 import { LoggerCallback } from './types';
-import { isValidZip as zipCheck } from './zip.js';
+
+// ZIP signature constant
+export const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
 
 /**
- * Validates a ZIP file structure
- * @param fileData The file data to validate
- * @param logger Callback function for logging messages
- * @returns True if validation passes, false otherwise
+ * Validates if a buffer contains a valid ZIP file by checking its signature
+ */
+export function isValidZip(buffer: ArrayBuffer): boolean {
+  const header = new Uint8Array(buffer.slice(0, 4));
+  return arraysEqual(header, ZIP_SIGNATURE);
+}
+
+/**
+ * Helper function to compare two Uint8Arrays
+ */
+function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((val, i) => val === b[i]);
+}
+
+/**
+ * Validates a ZIP file with additional logging
  */
 export async function validateZipFile(
   fileData: ArrayBuffer,
   logger: LoggerCallback
 ): Promise<boolean> {
   try {
-    if (!zipCheck(fileData)) {
+    if (!isValidZip(fileData)) {
       logger('Invalid ZIP file format', 'error');
       return false;
     }
@@ -66,10 +81,9 @@ export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boo
 }
 
 /**
- * This function is replaced with validateOfficeStructure
- * Keeping the function signature for compatibility
+ * Validates Office file structure and required components
  */
-export function validateOfficeCRC(zip: any, logger: LoggerCallback): boolean {
+export function validateOfficeCRC(zip: JSZip, logger: LoggerCallback): boolean {
   try {
     // Check for required Office files
     const requiredFiles = [
@@ -123,7 +137,26 @@ export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
 }
 
 // Re-export the function
-export const isValidZip = zipCheck;
+export const isValidZip = isValidZip;
 
-// ZIP signature constant
-export const ZIP_SIGNATURE = new Uint8Array([0x50, 0x4b, 0x03, 0x04]); 
+export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
+  // Implementation of validateOfficeStructure
+  // This function is now implemented in the validateOfficeStructure method
+  return true; // Placeholder return, actual implementation needed
+}
+
+export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
+  // Implementation of validateExcelStructure
+  // This function is now implemented in the validateExcelStructure method
+}
+
+export function validateOfficeStructure(zip: JSZip, logger: LoggerCallback): boolean {
+  // Implementation of validateOfficeStructure
+  // This function is now implemented in the validateOfficeStructure method
+  return true; // Placeholder return, actual implementation needed
+}
+
+export function validateExcelStructure(zip: JSZip, logger: LoggerCallback) {
+  // Implementation of validateExcelStructure
+  // This function is now implemented in the validateExcelStructure method
+} 

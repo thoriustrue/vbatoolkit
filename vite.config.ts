@@ -32,13 +32,6 @@ export default defineConfig({
       ]
     }
   },
-  resolve: {
-    alias: {
-      // Force our custom zip.js to be used
-      './zip': './src/utils/zip.js',
-      'zip.js': './src/utils/zip.js'
-    }
-  },
   // GitHub Pages configuration for the vbatoolkit repository
   base: '/vbatoolkit/',  // Replace with your actual repository name
   build: {
@@ -53,9 +46,8 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        entryFileNames: `assets/[name].js`,
-        chunkFileNames: `assets/[name].js`,
         assetFileNames: 'static/[name].[ext]',
+        // Use an object for manualChunks
         manualChunks: {
           vendor: [
             'react', 
@@ -63,9 +55,7 @@ export default defineConfig({
           ],
           xlsx: ['xlsx'],
           jszip: ['jszip'],
-          buffer: ['buffer'],
-          // Include our zip.js in the main chunk
-          main: [path.resolve(__dirname, 'src/utils/zip.js')]
+          buffer: ['buffer']
         }
       }
     }

@@ -1,5 +1,5 @@
 import { LoggerCallback } from './types';
-import { isValidZip } from './zip.js';
+import { isValidZip } from './zipValidator';
 import JSZip from 'jszip';
 
 /**
@@ -13,6 +13,12 @@ export async function removeExcelSecurity(
   logger: LoggerCallback
 ): Promise<Uint8Array | null> {
   try {
+    // Validate ZIP structure
+    if (!isValidZip(fileData.buffer)) {
+      logger('Invalid ZIP file structure', 'error');
+      return null;
+    }
+    
     // Check if this is an Office Open XML file (Excel 2007+)
     if (!isOfficeOpenXML(fileData)) {
       logger('This feature only works with modern Excel files (.xlsx, .xlsm, .xlsb).', 'info');
