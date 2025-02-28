@@ -1,0 +1,72 @@
+name: Update Changelog
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'CHANGELOG.md'
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Git user
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+      
+      - name: Get latest version
+        id: get_version
+        run: |
+          VERSION=$(grep -m 1 "version" package.json | sed 's/[^0-9.]//g')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Get commit messages since last tag
+        id: get_commits
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+          else
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"- %s" --no-merges)
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Update CHANGELOG.md
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          VERSION="${{ steps.get_version.outputs.version }}"
+          
+          if [ -f CHANGELOG.md ]; then
+            # Check if this version is already in the changelog
+            if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
+              # Create new version entry
+              CHANGELOG_ENTRY="## [$VERSION] - $DATE\n\n${{ steps.get_commits.outputs.commits }}\n\n"
+              # Insert after the first line
+              sed -i "1a\\$CHANGELOG_ENTRY" CHANGELOG.md
+            fi
+          else
+            # Create new changelog file
+            echo "# Changelog\n\nAll notable changes to this project will be documented in this file.\n\n## [$VERSION] - $DATE\n\n${{ steps.get_commits.outputs.commits }}\n" > CHANGELOG.md
+          fi
+      
+      - name: Commit and push changes
+        run: |
+          git add CHANGELOG.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update CHANGELOG.md [skip ci]"
+            git push
+          fi 

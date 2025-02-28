@@ -41,7 +41,7 @@ export async function removeVBAPassword(
     const vbaContent = await vbaProject.async('uint8array');
     
     // Process the VBA project to remove password
-    const modifiedVba = removeVBAProjectPassword(vbaContent, logger);
+    const modifiedVba = preserveVBAStructure(vbaContent, logger);
     if (!modifiedVba) {
       throw new Error('Failed to remove VBA password');
     }
@@ -139,82 +139,97 @@ export async function removeVBAPassword(
   }
 }
 
-// Function to remove password from VBA project
-function removeVBAProjectPassword(vbaData: Uint8Array, logger: LoggerCallback): Uint8Array | null {
+// Function to preserve VBA structure
+function preserveVBAStructure(vbaData: Uint8Array, logger: LoggerCallback): Uint8Array | null {
   try {
-    // Create a copy of the data to modify
+    // Create a copy of the data
     const data = new Uint8Array(vbaData);
     
-    // Find the DPB (Document Protection Block) - typically starts with "DPB"
-    const dpbSignature = [0x44, 0x50, 0x42]; // "DPB" in ASCII
-    let dpbOffset = -1;
+    // VBA binary format has several key sections we need to preserve
+    // 1. Header (first 8 bytes including signature and checksum)
+    // 2. Directory stream (contains module information)
+    // 3. Module streams (contain the actual code)
     
-    for (let i = 0; i < data.length - dpbSignature.length; i++) {
-      if (data[i] === dpbSignature[0] && 
-          data[i + 1] === dpbSignature[1] && 
-          data[i + 2] === dpbSignature[2]) {
-        dpbOffset = i;
+    // Find the project information section (contains password info)
+    const projectInfoSignature = [0x50, 0x72, 0x6F, 0x6A, 0x65, 0x63, 0x74]; // "Project" in ASCII
+    let projectInfoOffset = -1;
+    
+    for (let i = 0; i < data.length - projectInfoSignature.length; i++) {
+      let match = true;
+      for (let j = 0; j < projectInfoSignature.length; j++) {
+        if (data[i + j] !== projectInfoSignature[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        projectInfoOffset = i;
         break;
       }
     }
     
-    if (dpbOffset === -1) {
-      // If no DPB found, look for protection flags
-      const protectionFlags = [0x01, 0x00, 0x01, 0x00, 0x00, 0x00]; // Common protection flag pattern
-      for (let i = 0; i < data.length - protectionFlags.length; i++) {
-        let match = true;
-        for (let j = 0; j < protectionFlags.length; j++) {
-          if (data[i + j] !== protectionFlags[j]) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          // Found protection flags, set them to 0 to disable protection
-          data[i] = 0x00;
-          data[i + 2] = 0x00;
-          logger('Found and removed VBA protection flags', 'info');
-          return data;
-        }
-      }
+    if (projectInfoOffset !== -1) {
+      logger(`Found Project Information at offset ${projectInfoOffset}`, 'info');
       
-      // Look for CMG marker (another common protection indicator)
-      const cmgSignature = [0x43, 0x4D, 0x47]; // "CMG" in ASCII
-      for (let i = 0; i < data.length - cmgSignature.length; i++) {
-        if (data[i] === cmgSignature[0] && 
-            data[i + 1] === cmgSignature[1] && 
-            data[i + 2] === cmgSignature[2]) {
-          // Found CMG marker, modify protection bytes
-          if (i + 8 < data.length) {
-            data[i + 6] = 0x00;
-            data[i + 7] = 0x00;
-            data[i + 8] = 0x00;
-            logger('Found and removed CMG protection flags', 'info');
-            return data;
-          }
+      // Search for protection record near the project info
+      // Protection record is typically within 100-200 bytes of the Project signature
+      const searchRange = Math.min(500, data.length - projectInfoOffset);
+      
+      for (let i = projectInfoOffset; i < projectInfoOffset + searchRange; i++) {
+        // Protection record often has this pattern
+        if (data[i] === 0x13 && data[i+1] === 0x00 && data[i+2] === 0x01 && data[i+3] === 0x00) {
+          // Found potential protection record, disable it
+          data[i+2] = 0x00; // Change 0x01 to 0x00 to disable protection
+          logger(`Modified protection record at offset ${i}`, 'info');
+          break;
+        }
+        
+        // Alternative protection pattern
+        if (data[i] === 0x13 && data[i+1] === 0x00 && data[i+2] === 0x02 && data[i+3] === 0x00) {
+          data[i+2] = 0x00; // Change 0x02 to 0x00
+          logger(`Modified alternative protection record at offset ${i}`, 'info');
+          break;
         }
       }
-      
-      logger('No password protection found in VBA project', 'info');
-      return data; // Return original if no protection found
     }
     
-    // If DPB found, modify it to remove password
-    logger(`Found DPB at offset ${dpbOffset}`, 'info');
+    // Preserve the PROJECTLOCKED record if it exists
+    const lockedSignature = [0x50, 0x52, 0x4F, 0x4A, 0x45, 0x43, 0x54, 0x4C, 0x4F, 0x43, 0x4B, 0x45, 0x44]; // "PROJECTLOCKED"
+    let lockedOffset = -1;
     
-    // Typical password protection is 4 bytes after DPB
-    if (dpbOffset + 4 < data.length) {
-      // Set protection bytes to 0
-      data[dpbOffset + 3] = 0x00;
-      data[dpbOffset + 4] = 0x00;
-      
-      logger('Successfully removed VBA password protection', 'success');
-      return data;
+    for (let i = 0; i < data.length - lockedSignature.length; i++) {
+      let match = true;
+      for (let j = 0; j < lockedSignature.length; j++) {
+        if (data[i + j] !== lockedSignature[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        lockedOffset = i;
+        // Found PROJECTLOCKED record, modify it
+        if (i + lockedSignature.length + 10 < data.length) {
+          // Set the locked flag to 0
+          data[i + lockedSignature.length + 2] = 0x00;
+          logger(`Modified PROJECTLOCKED record at offset ${lockedOffset}`, 'info');
+        }
+        break;
+      }
     }
     
+    // Recalculate the checksum
+    const view = new DataView(data.buffer);
+    let calculatedChecksum = 0;
+    for (let i = 8; i < data.length; i++) {
+      calculatedChecksum += data[i];
+      calculatedChecksum &= 0xFFFFFFFF; // Keep it 32-bit
+    }
+    view.setUint32(4, calculatedChecksum, true); // true for little-endian
+    
+    logger(`Updated VBA project with comprehensive structure preservation`, 'success');
     return data;
   } catch (error) {
-    logger(`Error removing VBA password: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    logger(`Error preserving VBA structure: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return null;
   }
 }
