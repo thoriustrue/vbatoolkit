@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Clock, ChevronDown, ChevronUp, Tag } from 'lucide-react';
 
 interface ChangelogEntry {
   version: string;
   date: string;
   changes: {
-    type: 'added' | 'fixed' | 'changed' | 'removed';
+    type: 'added' | 'changed' | 'fixed' | 'removed';
     description: string;
   }[];
 }
@@ -54,7 +54,7 @@ const CHANGELOG_DATA: ChangelogEntry[] = [
   }
 ];
 
-export function Changelog() {
+export function Changelog({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (

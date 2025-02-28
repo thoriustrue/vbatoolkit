@@ -348,12 +348,234 @@ function App() {
                   </div>
                 </div>
                 
-                <div className="flex border-b border-gray-200 dark:border-gray-700">
-                  <div className="px-4 py-2 border-b-2 border-blue-500 text-blue-600 dark:text-blue-400">
-                    VBA Password Remover
+                {file && (
+                  <div className="mt-6 space-y-4">
+                    {/* Tabs */}
+                    <div className="border-b border-gray-200">
+                      <nav className="-mb-px flex" aria-label="Tabs">
+                        <button
+                          onClick={() => setActiveTab('remove')}
+                          className={`${
+                            activeTab === 'remove'
+                              ? 'border-indigo-500 text-indigo-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+                        >
+                          Remove VBA Password
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('extract')}
+                          className={`${
+                            activeTab === 'extract'
+                              ? 'border-indigo-500 text-indigo-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+                        >
+                          Extract VBA Code
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('alternative')}
+                          className={`${
+                            activeTab === 'alternative'
+                              ? 'border-indigo-500 text-indigo-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          } w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm`}
+                        >
+                          Alternative Method
+                        </button>
+                      </nav>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-md font-medium text-gray-900">
+                        {activeTab === 'remove' ? 'Remove VBA Password' : activeTab === 'extract' ? 'Extract VBA Code' : 'Alternative Method'}
+                      </h3>
+                      <div className="flex space-x-2">
+                        {!isProcessing && activeTab === 'remove' && !processedFile && (
+                          <button
+                            type="button"
+                            onClick={processFile}
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo -700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            <Shield className="h-4 w-4 mr-2 " />
+                            Remove VBA Password
+                          </button>
+                        )}
+                        
+                        {!isProcessing && activeTab === 'extract' && extractedModules.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={extractCode}
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            <Code className="h-4 w-4 mr-2" />
+                            Extract VBA Code
+                          </button>
+                        )}
+                        
+                        {activeTab === 'remove' && processedFile && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={resetProcess}
+                              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Try Again
+                            </button>
+                            <button
+                              type="button"
+                              onClick={downloadFile}
+                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Download Unprotected File
+                            </button>
+                          </>
+                        )}
+                        
+                        {activeTab === 'extract' && extractedModules.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={resetProcess}
+                              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Try Again
+                            </button>
+                            <button
+                              type="button"
+                              onClick={downloadVBACode}
+                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Download VBA Code
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Progress bar */}
+                    {(isProcessing || progress > 0) && (
+                      <div className="mt-2">
+                        <div className="relative pt-1">
+                          <div className="flex mb-2 items-center justify-between">
+                            <div>
+                              <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200">
+                                Progress
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs font-semibold inline-block text-indigo-600">
+                                {progress}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-indigo-200">
+                            <div 
+                              style={{ width: `${progress}%` }} 
+                              className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 transition-all duration-300"
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Extracted modules list */}
+                    {activeTab === 'extract' && extractedModules.length > 0 && (
+                      <div className="mt-4">
+                        <h3 className="text-md font-medium text-gray-900 mb-2">Extracted VBA Modules</h3>
+                        <div className="bg-gray-50 rounded-md p-3 border border-gray-200 max-h-64 overflow-y-auto">
+                          <ul className="divide-y divide-gray-200">
+                            {extractedModules.map((module, index) => (
+                              <li key={index} className="py-3">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">{module.name}</p>
+                                    <p className="text-sm text-gray-500">{module.type}</p>
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {(module.code.length / 1024).toFixed(2)} KB
+                                  </div>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Process log */}
+                    <div className="mt-4">
+                      <h3 className="text-md font-medium text-gray-900 mb-2">Process Log</h3>
+                      <div className="bg-gray-50 rounded-md p-3 h-64 overflow-y-auto border border-gray-200">
+                        {logs.length === 0 ? (
+                          <p className="text-gray-500 text-sm italic">Process logs will appear here...</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {logs.map((log, index) => (
+                              <div key={index} className="flex items-start text-sm">
+                                <span className="mr-2 mt-0.5">{getLogIcon(log.type)}</span>
+                                <span className={`${
+                                  log.type === 'error' ? 'text-red-600' : 
+                                  log.type === 'success' ? 'text-green-600' : 'text-gray-700'
+                                }`}>
+                                  {log.message}
+                                </span>
+                              </div>
+                            ))}
+                            {isProcessing && (
+                              <div className="flex items-center text-sm text-indigo-600">
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                <span>Processing...</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Feature descriptions */}
+                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-4 bg-blue-50 rounded-md border border-blue-100">
+                    <h3 className="text-md font-medium text-blue-800 mb-2 flex items-center">
+                      <Shield className="w-5 h-5 mr-2" />
+                      Remove VBA Password
+                    </h3>
+                    <p className="text-sm text-blue-700 mb-2">
+                      This tool removes password protection from VBA projects in Excel files, allowing you to access and edit the VBA code without knowing the original password.
+                    </p>
+                    <ul className="text-sm text-blue-700 list-disc pl-5 space-y-1">
+                      <li>Works with Excel 2007-2022 files (.xlsm, .xls, .xlsb)</li>
+                      <li>Removes project-level password protection</li>
+                      <li>Removes sheet and workbook protection</li>
+                      <li>Auto-enables macros and external links</li>
+                      <li>100% client-side processing (no data is sent to any server)</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="p-4 bg-indigo-50 rounded-md border border-indigo-100">
+                    <h3 className="text-md font-medium text-indigo-800 mb-2 flex items-center">
+                      <Code className="w-5 h-5 mr-2" />
+                      Extract VBA Code
+                    </h3>
+                    <p className="text-sm text-indigo-700 mb-2">
+                      This tool extracts all VBA code modules from Excel files, allowing you to view, backup, or reuse the code without opening Excel.
+                    </p>
+                    <ul className="text-sm text-indigo-700 list-disc pl-5 space-y-1">
+                      <li>Extracts all types of VBA modules (standard, class, form, document)</li>
+                      <li>Preserves module names and types</li>
+                      <li>Exports code to a plain text file for easy viewing or backup</li>
+                      <li>Works with both protected and unprotected VBA projects</li>
+                    </ul>
                   </div>
                 </div>
                 
+<<<<<<< HEAD
                 <div className="p-4">
                   {/* Main method content */}
                   <div className="space-y-4">
@@ -556,6 +778,40 @@ function App() {
                         </div>
                       </div>
                     )}
+=======
+                {/* Disclaimer */}
+                <div className="mt-8 p-4 bg-yellow-50 rounded-md border border-yellow-100">
+                  <h3 className="text-md font-medium text-yellow-800 mb-2 flex items-center">
+                    <AlertCircle className="w-5 h-5 mr-2" />
+                    Ethical Usage Disclaimer
+                  </h3>
+                  <p className="text-sm text-yellow-700">
+                    These tools should only be used on Excel files that you own or have explicit permission to modify.
+                    They are intended for legitimate purposes, such as accessing your own VBA projects
+                    when you've forgotten the password or backing up your code. Unauthorized access to protected files may violate applicable laws.
+                  </p>
+                </div>
+                
+                {/* How it works */}
+                <div className="mt-8">
+                  <h3 className="text-md font-medium text-gray-900 mb-2">How It Works</h3>
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <p>
+                      <strong>Password Removal:</strong> This tool works by manipulating the binary structure of the Excel VBA project to remove password protection.
+                      It locates the password hash in the VBA project structure and removes it, allowing you to access the VBA code without needing the original password.
+                      It also removes sheet and workbook protection and configures security settings to auto-enable macros and external links.
+                    </p>
+                    <p>
+                      <strong>Code Extraction:</strong> This tool analyzes the VBA project structure in the Excel file and extracts all code modules.
+                      It identifies different module types (standard modules, class modules, forms, and document modules) and exports them to a text file.
+                    </p>
+                    <p>
+                      The entire process happens in your browser - no data is sent to any server.
+                    </p>
+                    <p>
+                      Supported Excel versions: Excel 2007-2022 (.xlsm, .xls, .xlsb formats)
+                    </p>
+>>>>>>> parent of 998746b (Fixes)
                   </div>
                 </div>
               </div>
