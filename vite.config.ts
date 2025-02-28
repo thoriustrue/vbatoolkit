@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import { NodeModulesPolyfillPlugin } from '@esbuild-plugins/node-modules-polyfill';
+import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -56,17 +57,15 @@ export default defineConfig({
         chunkFileNames: `assets/[name].js`,
         assetFileNames: 'static/[name].[ext]',
         manualChunks: {
-          vendor: ['react', 'react-dom'],
+          vendor: [
+            'react', 
+            'react-dom'
+          ],
           xlsx: ['xlsx'],
           jszip: ['jszip'],
-          // Create a separate chunk for buffer polyfill
-          polyfill: ['buffer'],
-          // Ensure our zip.js is included in the main chunk
-          main: (id) => {
-            if (id.includes('zip.js')) {
-              return 'main';
-            }
-          }
+          buffer: ['buffer'],
+          // Include our zip.js in the main chunk
+          main: [path.resolve(__dirname, 'src/utils/zip.js')]
         }
       }
     }
