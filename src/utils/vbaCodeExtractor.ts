@@ -184,6 +184,7 @@ async function extractVBAModulesAlternative(
   try {
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Find the dir stream in the VBA project - try multiple signatures
     const dirSignatures = [
       new Uint8Array([0x44, 0x69, 0x72]), // "Dir" in ASCII
@@ -205,6 +206,11 @@ async function extractVBAModulesAlternative(
     const dirSignature = new Uint8Array([0x44, 0x69, 0x72]); // "Dir" in ASCII
     let dirOffset = findSignature(vbaContent, dirSignature);
 >>>>>>> parent of 998746b (Fixes)
+=======
+    // Find the dir stream in the VBA project
+    const dirSignature = new Uint8Array([0x44, 0x69, 0x72]); // "Dir" in ASCII
+    let dirOffset = findSignature(vbaContent, dirSignature);
+>>>>>>> parent of 998746b (Fixes)
     
     if (dirOffset === -1) {
       logger('Could not find dir stream in VBA project', 'error');
@@ -213,6 +219,7 @@ async function extractVBAModulesAlternative(
     
     // Skip dir header (typically 4 bytes)
 <<<<<<< HEAD
+<<<<<<< HEAD
     dirOffset += 4;
 =======
     // If the workbook has vbaraw but we couldn't extract modules using the primary method,
@@ -220,6 +227,9 @@ async function extractVBAModulesAlternative(
     if (!workbook.vbaraw) {
       return modules;
     }
+=======
+    dirOffset += dirSignature.length + 4;
+>>>>>>> parent of 998746b (Fixes)
 =======
     dirOffset += dirSignature.length + 4;
 >>>>>>> parent of 998746b (Fixes)

@@ -576,6 +576,7 @@ function App() {
                 </div>
                 
 <<<<<<< HEAD
+<<<<<<< HEAD
                 <div className="p-4">
                   {/* Main method content */}
                   <div className="space-y-4">
@@ -779,6 +780,8 @@ function App() {
                       </div>
                     )}
 =======
+=======
+>>>>>>> parent of 998746b (Fixes)
                 {/* Disclaimer */}
                 <div className="mt-8 p-4 bg-yellow-50 rounded-md border border-yellow-100">
                   <h3 className="text-md font-medium text-yellow-800 mb-2 flex items-center">
@@ -811,6 +814,9 @@ function App() {
                     <p>
                       Supported Excel versions: Excel 2007-2022 (.xlsm, .xls, .xlsb formats)
                     </p>
+<<<<<<< HEAD
+>>>>>>> parent of 998746b (Fixes)
+=======
 >>>>>>> parent of 998746b (Fixes)
                   </div>
                 </div>
