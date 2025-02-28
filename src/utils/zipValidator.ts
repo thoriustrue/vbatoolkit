@@ -55,14 +55,12 @@ export function validateExcelStructure(zip: AdmZip, logger: LoggerCallback) {
 
 export function validateOfficeCRC(zip: AdmZip, logger: LoggerCallback) {
   zip.getEntries().forEach(entry => {
-    try {
-      const content = zip.readFile(entry);
-      const calculated = signed(Buffer.from(content)) >>> 0; // Convert to unsigned
-      if (entry.header.crc !== calculated) {
-        logger(`CRC mismatch in ${entry.entryName}: Expected 0x${entry.header.crc.toString(16)} vs Calculated 0x${calculated.toString(16)}`, 'error');
-      }
-    } catch (error) {
-      logger(`CRC check failed for ${entry.entryName}: ${error.message}`, 'error');
+    const content = zip.readFile(entry);
+    const calculated = signed(content) >>> 0; // Convert to unsigned 32-bit
+    if (entry.header.crc !== calculated) {
+      logger(`CRC mismatch in ${entry.entryName}: 
+        Expected 0x${entry.header.crc.toString(16).padStart(8, '0')}
+        vs Calculated 0x${calculated.toString(16).padStart(8, '0')}`, 'error');
     }
   });
 } 
