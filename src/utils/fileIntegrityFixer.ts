@@ -10,7 +10,7 @@ export async function fixFileIntegrity(
   logger: LoggerCallback
 ): Promise<JSZip> {
   try {
-    logger('Applying advanced file integrity fixes...', 'info');
+    logger('Applying targeted file integrity fixes...', 'info');
     
     // 1. Fix Content_Types.xml
     const contentTypes = zip.file('[Content_Types].xml');
@@ -50,196 +50,28 @@ export async function fixFileIntegrity(
         }
       }
       
-      // Ensure all required part types are present
-      const requiredParts = [
-        { part: '/xl/workbook.xml', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml' },
-        { part: '/xl/vbaProject.bin', type: 'application/vnd.ms-office.vbaProject' }
-      ];
-      
-      for (const req of requiredParts) {
-        if (zip.file(req.part.substring(1))) {
-          let found = false;
-          const overrides = doc.getElementsByTagName('Override');
-          for (let i = 0; i < overrides.length; i++) {
-            const part = overrides[i].getAttribute('PartName');
-            if (part === req.part) {
-              found = true;
-              break;
-            }
-          }
-          
-          if (!found) {
-            const newOverride = doc.createElement('Override');
-            newOverride.setAttribute('PartName', req.part);
-            newOverride.setAttribute('ContentType', req.type);
-            types.appendChild(newOverride);
-            modified = true;
-          }
-        }
-      }
-      
       if (modified) {
         const serializer = new XMLSerializer();
-        const newContent = serializer.serializeToString(doc);
-        zip.file('[Content_Types].xml', newContent);
-        logger('Fixed content types with proper XML parsing', 'info');
+        content = serializer.serializeToString(doc);
+        zip.file('[Content_Types].xml', content);
+        logger('Fixed content types', 'info');
       }
     }
     
-    // 2. Fix relationship files
-    const relFiles = Object.keys(zip.files).filter(path => path.endsWith('.rels'));
-    for (const relFile of relFiles) {
-      const file = zip.file(relFile);
-      if (file) {
-        let content = await file.async('string');
-        
-        try {
-          // Parse and fix XML structure
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(content, 'text/xml');
-          
-          // Check if Relationships element exists and has children
-          const relationships = doc.getElementsByTagName('Relationships')[0];
-          if (relationships && relationships.childNodes.length === 0) {
-            // Empty relationships file - remove it
-            zip.remove(relFile);
-            logger(`Removed empty relationship file: ${relFile}`, 'info');
-          } else {
-            // Fix relationship IDs to ensure uniqueness
-            const rels = doc.getElementsByTagName('Relationship');
-            const usedIds = new Set();
-            let modified = false;
-            
-            for (let i = 0; i < rels.length; i++) {
-              let id = rels[i].getAttribute('Id');
-              if (usedIds.has(id)) {
-                // Duplicate ID found, generate a new one
-                const newId = `rId${i + 100}`; // Use a high number to avoid conflicts
-                rels[i].setAttribute('Id', newId);
-                modified = true;
-              }
-              usedIds.add(rels[i].getAttribute('Id'));
-            }
-            
-            if (modified) {
-              const serializer = new XMLSerializer();
-              const newContent = serializer.serializeToString(doc);
-              zip.file(relFile, newContent);
-              logger(`Fixed relationship IDs in ${relFile}`, 'info');
-            }
-          }
-        } catch (xmlError) {
-          logger(`Error parsing XML in ${relFile}: ${xmlError}`, 'warning');
-        }
-      }
-    }
-    
-    // 3. Fix workbook.xml
+    // 2. Fix workbook.xml
     const workbookFile = zip.file('xl/workbook.xml');
     if (workbookFile) {
       let content = await workbookFile.async('string');
       
-      try {
-        // Parse and fix XML structure
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(content, 'text/xml');
-        
-        // Ensure workbook has proper XML structure
-        let modified = false;
-        
-        // Check for duplicate sheet IDs
-        const sheets = doc.getElementsByTagName('sheet');
-        const usedIds = new Set();
-        const usedNames = new Set();
-        
-        for (let i = 0; i < sheets.length; i++) {
-          let sheetId = sheets[i].getAttribute('sheetId');
-          let name = sheets[i].getAttribute('name');
-          
-          if (usedIds.has(sheetId)) {
-            // Duplicate ID found, generate a new one
-            const newId = (i + 1).toString();
-            sheets[i].setAttribute('sheetId', newId);
-            modified = true;
-          }
-          
-          if (usedNames.has(name)) {
-            // Duplicate name found, generate a new one
-            const newName = `Sheet${i + 1}`;
-            sheets[i].setAttribute('name', newName);
-            modified = true;
-          }
-          
-          usedIds.add(sheets[i].getAttribute('sheetId'));
-          usedNames.add(sheets[i].getAttribute('name'));
-        }
-        
-        if (modified) {
-          const serializer = new XMLSerializer();
-          const newContent = serializer.serializeToString(doc);
-          zip.file('xl/workbook.xml', newContent);
-          logger('Fixed workbook XML structure', 'info');
-        }
-      } catch (xmlError) {
-        logger(`Error parsing workbook XML: ${xmlError}`, 'warning');
+      // Ensure workbook has proper XML structure
+      if (!content.includes('<?xml')) {
+        content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + content;
+        zip.file('xl/workbook.xml', content);
+        logger('Fixed workbook XML declaration', 'info');
       }
     }
     
-    // 4. Fix worksheet files
-    const worksheetFiles = Object.keys(zip.files).filter(
-      path => path.startsWith('xl/worksheets/sheet') && path.endsWith('.xml')
-    );
-    
-    for (const worksheetPath of worksheetFiles) {
-      const worksheet = zip.file(worksheetPath);
-      if (worksheet) {
-        let content = await worksheet.async('string');
-        
-        try {
-          // Parse and fix XML structure
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(content, 'text/xml');
-          
-          // Check for and fix common worksheet issues
-          let modified = false;
-          
-          // Fix missing dimension element
-          const dimensions = doc.getElementsByTagName('dimension');
-          if (dimensions.length === 0) {
-            const worksheet = doc.getElementsByTagName('worksheet')[0];
-            const sheetData = doc.getElementsByTagName('sheetData')[0];
-            
-            if (worksheet && sheetData) {
-              const dimension = doc.createElement('dimension');
-              dimension.setAttribute('ref', 'A1');
-              worksheet.insertBefore(dimension, sheetData);
-              modified = true;
-            }
-          }
-          
-          // Remove invalid cell references
-          const cells = doc.getElementsByTagName('c');
-          for (let i = cells.length - 1; i >= 0; i--) {
-            const r = cells[i].getAttribute('r');
-            if (!r || !/^[A-Z]+[0-9]+$/.test(r)) {
-              cells[i].parentNode.removeChild(cells[i]);
-              modified = true;
-            }
-          }
-          
-          if (modified) {
-            const serializer = new XMLSerializer();
-            const newContent = serializer.serializeToString(doc);
-            zip.file(worksheetPath, newContent);
-            logger(`Fixed worksheet XML in ${worksheetPath}`, 'info');
-          }
-        } catch (xmlError) {
-          logger(`Error parsing worksheet XML in ${worksheetPath}: ${xmlError}`, 'warning');
-        }
-      }
-    }
-    
-    // 5. Fix VBA project binary structure
+    // 3. Fix VBA project binary structure
     const vbaProject = zip.file('xl/vbaProject.bin');
     if (vbaProject) {
       const vbaContent = await vbaProject.async('uint8array');
@@ -270,22 +102,48 @@ export async function fixFileIntegrity(
       }
     }
     
-    // 6. Remove any potentially corrupted files
-    const knownCorruptPatterns = [
-      'xl/ctrlProps/',
-      'xl/activeX/',
-      'xl/drawings/vmlDrawing'
-    ];
+    // 4. Only remove specific problematic files that are known to cause issues
+    // Instead of removing all ctrlProps and vmlDrawing files, only remove ones with specific issues
+    const filesToCheck = Object.keys(zip.files).filter(path => 
+      path.includes('xl/ctrlProps/') || 
+      path.includes('xl/drawings/vmlDrawing')
+    );
     
-    for (const pattern of knownCorruptPatterns) {
-      const matchingFiles = Object.keys(zip.files).filter(path => path.includes(pattern));
-      for (const file of matchingFiles) {
-        zip.remove(file);
-        logger(`Removed potentially problematic file: ${file}`, 'info');
+    let removedCount = 0;
+    for (const filePath of filesToCheck) {
+      try {
+        // Only check XML files
+        if (filePath.endsWith('.xml')) {
+          const fileContent = await zip.file(filePath)?.async('string');
+          if (fileContent) {
+            // Only remove if the file has actual corruption markers
+            if (
+              fileContent.includes('<?mso-application progid="Excel.Sheet"?>') || // Invalid header
+              fileContent.includes('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><?xml') || // Double XML declaration
+              fileContent.includes('<corrupt>') || // Explicit corruption marker
+              !fileContent.trim().startsWith('<?xml') // Missing XML declaration
+            ) {
+              zip.remove(filePath);
+              logger(`Removed corrupted file: ${filePath}`, 'info');
+              removedCount++;
+            }
+          }
+        }
+      } catch (error) {
+        // If we can't even read the file, it's likely corrupted
+        zip.remove(filePath);
+        logger(`Removed unreadable file: ${filePath}`, 'info');
+        removedCount++;
       }
     }
     
-    logger('Advanced file integrity fixes applied', 'success');
+    if (removedCount > 0) {
+      logger(`Removed ${removedCount} corrupted files`, 'info');
+    } else {
+      logger('No corrupted files found', 'info');
+    }
+    
+    logger('Targeted file integrity fixes applied', 'success');
     return zip;
   } catch (error) {
     logger(`Error fixing file integrity: ${error instanceof Error ? error.message : String(error)}`, 'error');

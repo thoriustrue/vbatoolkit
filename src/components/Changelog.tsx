@@ -1,48 +1,38 @@
-import { useState, useEffect } from 'react';
-import { Clock, ChevronDown, ChevronUp, Tag } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ChangelogEntry {
   version: string;
   date: string;
   changes: {
-    type: 'added' | 'changed' | 'fixed' | 'removed';
+    type: 'added' | 'fixed' | 'changed' | 'removed';
     description: string;
   }[];
 }
 
-// This would typically be loaded from a JSON file or API
+// Define the changelog data directly in this component
 const CHANGELOG_DATA: ChangelogEntry[] = [
   {
-    version: '1.0.0',
-    date: '2025-02-28',
+    version: '0.1.1',
+    date: '2024-06-20',
+    changes: [
+      { type: 'added', description: 'Added VBA password removal functionality' },
+      { type: 'added', description: 'Implemented macro auto-enable features' },
+      { type: 'added', description: 'Added error logging system' }
+    ]
+  },
+  {
+    version: '0.1.0',
+    date: '2024-06-15',
     changes: [
       { type: 'added', description: 'Initial release of VBA Toolkit' },
-      { type: 'added', description: 'VBA password removal functionality' },
-      { type: 'added', description: 'Excel security settings removal' }
-    ]
-  },
-  {
-    version: '1.0.1',
-    date: '2025-02-29',
-    changes: [
-      { type: 'fixed', description: 'Fixed file corruption issues with large Excel files' },
-      { type: 'added', description: 'Added CRC validation for ZIP archives' },
-      { type: 'changed', description: 'Improved error handling and logging' }
-    ]
-  },
-  {
-    version: '1.1.0',
-    date: '2025-03-01',
-    changes: [
-      { type: 'added', description: 'Added technical error logging panel' },
-      { type: 'added', description: 'Added changelog viewer' },
-      { type: 'fixed', description: 'Fixed dependency issues with adm-zip' },
-      { type: 'changed', description: 'Updated build process for better reliability' }
+      { type: 'added', description: 'Basic file handling capabilities' },
+      { type: 'added', description: 'User interface for file operations' }
     ]
   }
 ];
 
-export function Changelog({ children }: { children: React.ReactNode }) {
+export function Changelog() {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -57,8 +47,23 @@ export function Changelog({ children }: { children: React.ReactNode }) {
         {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         <span className="ml-2">Version History</span>
       </summary>
-      <div className="ml-6 mt-2 space-y-2">
-        {children}
+      <div className="ml-6 mt-2 space-y-2 max-h-80 overflow-y-auto">
+        {CHANGELOG_DATA.map((entry, index) => (
+          <div key={index} className="space-y-2 mb-4">
+            <h3 className="font-medium">v{entry.version} - {entry.date}</h3>
+            <ul className="list-disc pl-4 space-y-1">
+              {entry.changes.map((change, i) => (
+                <li key={i} className={
+                  change.type === 'added' ? 'text-green-600 dark:text-green-400' :
+                  change.type === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
+                  'text-blue-600 dark:text-blue-400'
+                }>
+                  {change.description}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
     </details>
   );

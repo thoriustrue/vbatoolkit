@@ -82,17 +82,156 @@ async function extractModulesFromVBAProject(
   const modules: VBAModule[] = [];
   
   try {
-    // Find the dir stream in the VBA project
-    const dirSignature = new Uint8Array([0x44, 0x69, 0x72]); // "Dir" in ASCII
-    let dirOffset = findSignature(vbaContent, dirSignature);
+    // Find the dir stream in the VBA project - try multiple signatures
+    const dirSignatures = [
+      new Uint8Array([0x44, 0x69, 0x72]), // "Dir" in ASCII
+      new Uint8Array([0x01, 0x44, 0x69, 0x72]), // Prefixed "Dir"
+      new Uint8Array([0x44, 0x49, 0x52]) // "DIR" in uppercase
+    ];
+    
+    let dirOffset = -1;
+    for (const signature of dirSignatures) {
+      dirOffset = findSignature(vbaContent, signature);
+      if (dirOffset !== -1) {
+        logger(`Found dir stream at offset ${dirOffset} with signature ${Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join(' ')}`, 'info');
+        dirOffset += signature.length;
+        break;
+      }
+    }
     
     if (dirOffset === -1) {
-      logger('Could not find dir stream in VBA project', 'error');
+      // Try alternative approach - look for module names directly
+      logger('Could not find dir stream, trying alternative approach...', 'info');
+      
+      // Common VBA module names to search for
+      const commonModuleNames = [
+        'ThisWorkbook',
+        'Sheet1',
+        'Sheet2',
+        'Sheet3',
+        'Module1',
+        'Module2',
+        'Class1',
+        'UserForm1'
+      ];
+      
+      for (const name of commonModuleNames) {
+        const nameBytes = new TextEncoder().encode(name);
+        const nameOffset = findSignature(vbaContent, nameBytes);
+        
+        if (nameOffset !== -1) {
+          // Found a module name, extract code around it
+          logger(`Found module name "${name}" at offset ${nameOffset}`, 'info');
+          
+          // Extract code (approximate - look for VBA keywords after the name)
+          let codeStart = nameOffset + nameBytes.length;
+          
+          // Look for common VBA keywords to find the start of code
+          const keywords = ['Sub', 'Function', 'Dim', 'Private', 'Public', 'Option'];
+          for (const keyword of keywords) {
+            const keywordBytes = new TextEncoder().encode(keyword);
+            const keywordOffset = findSignature(vbaContent.slice(codeStart, codeStart + 1000), keywordBytes);
+            
+            if (keywordOffset !== -1) {
+              codeStart += keywordOffset;
+              break;
+            }
+          }
+          
+          // Extract approximately 10KB of code (or until end of file)
+          const codeSize = Math.min(10240, vbaContent.length - codeStart);
+          const codeBytes = vbaContent.slice(codeStart, codeStart + codeSize);
+          
+          // Try to decode the code
+          let code = '';
+          try {
+            code = new TextDecoder('utf-8').decode(codeBytes);
+          } catch (e) {
+            code = new TextDecoder('windows-1252').decode(codeBytes);
+          }
+          
+          // Clean up the code
+          code = cleanVBACode(code);
+          
+          // Add to modules if it looks like valid VBA
+          if (code.includes('Sub') || code.includes('Function') || code.includes('Dim')) {
+            modules.push({
+              name,
+              code,
+              type: determineModuleType(name, code)
+            });
+            
+            logger(`Extracted module: ${name} using alternative method`, 'info');
+          }
+        }
+      }
+      
+      if (modules.length === 0) {
+        // Last resort - scan the entire file for VBA code patterns
+        logger('Scanning entire file for VBA code patterns...', 'info');
+        
+        // Look for common VBA code patterns
+        const patterns = [
+          'Sub ',
+          'Function ',
+          'Option Explicit',
+          'Private Sub',
+          'Public Function'
+        ];
+        
+        for (const pattern of patterns) {
+          const patternBytes = new TextEncoder().encode(pattern);
+          let patternOffset = 0;
+          
+          // Find all occurrences
+          while (patternOffset < vbaContent.length) {
+            const foundOffset = findSignature(vbaContent.slice(patternOffset), patternBytes);
+            if (foundOffset === -1) break;
+            
+            patternOffset += foundOffset;
+            
+            // Extract code around the pattern
+            const codeStart = Math.max(0, patternOffset - 100);
+            const codeSize = Math.min(20480, vbaContent.length - codeStart);
+            const codeBytes = vbaContent.slice(codeStart, codeStart + codeSize);
+            
+            // Try to decode the code
+            let code = '';
+            try {
+              code = new TextDecoder('utf-8').decode(codeBytes);
+            } catch (e) {
+              code = new TextDecoder('windows-1252').decode(codeBytes);
+            }
+            
+            // Clean up the code
+            code = cleanVBACode(code);
+            
+            // Generate a name based on the pattern
+            const name = `Module_${modules.length + 1}`;
+            
+            // Add to modules if it looks like valid VBA and not already included
+            if ((code.includes('Sub') || code.includes('Function')) && 
+                !modules.some(m => m.code.includes(code.substring(0, 100)))) {
+              modules.push({
+                name,
+                code,
+                type: 'standard'
+              });
+              
+              logger(`Extracted code fragment as ${name} using pattern scanning`, 'info');
+            }
+            
+            patternOffset += patternBytes.length;
+          }
+        }
+      }
+      
       return modules;
     }
     
+    // Continue with normal dir stream parsing if found
     // Skip dir header (typically 4 bytes)
-    dirOffset += dirSignature.length + 4;
+    dirOffset += 4;
     
     // Parse the dir stream to find module information
     const moduleInfos = parseModuleInfos(vbaContent, dirOffset, logger);
