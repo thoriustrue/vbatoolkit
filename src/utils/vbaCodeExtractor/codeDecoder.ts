@@ -33,21 +33,21 @@ function fixEncodingIssues(code: string): string {
   
   // Fix common encoding issues with special characters
   const encodingFixes: Record<string, string> = {
-    'â€"': '–', // en dash
-    'â€"': '—', // em dash
-    'â€˜': ''', // left single quote
-    'â€™': ''', // right single quote
-    'â€œ': '"', // left double quote
-    'â€': '"', // right double quote
-    'â€¦': '…', // ellipsis
-    'Â©': '©', // copyright
-    'Â®': '®', // registered trademark
-    'â„¢': '™', // trademark
+    '\u00e2\u20ac\u201c': '\u2013', // en dash
+    '\u00e2\u20ac\u201d': '\u2014', // em dash
+    '\u00e2\u20ac\u02dc': '\u2018', // left single quote
+    '\u00e2\u20ac\u2122': '\u2019', // right single quote
+    '\u00e2\u20ac\u0153': '\u201c', // left double quote
+    '\u00e2\u20ac\u009d': '\u201d', // right double quote
+    '\u00e2\u20ac\u00a6': '\u2026', // ellipsis
+    '\u00c2\u00a9': '\u00a9', // copyright
+    '\u00c2\u00ae': '\u00ae', // registered trademark
+    '\u00e2\u201e\u00a2': '\u2122', // trademark
   };
   
   // Apply all encoding fixes
-  Object.entries(encodingFixes).forEach(([broken, fixed]) => {
-    fixed = fixed.replace(new RegExp(broken, 'g'), fixed);
+  Object.entries(encodingFixes).forEach(([broken, replacement]) => {
+    fixed = fixed.replace(new RegExp(broken, 'g'), replacement);
   });
   
   return fixed;
