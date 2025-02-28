@@ -8,9 +8,9 @@ import { ErrorLog } from './components/ErrorLog';
 import { FileUploader } from './components/FileUploader';
 import { LogViewer } from './components/LogViewer';
 import { ProcessingActions } from './components/ProcessingActions';
-import { Changelog, ChangelogEntry as ChangelogEntryComponent } from './components/Changelog';
+import { Changelog, ChangelogEntryComponent } from './components/Changelog';
 import { CHANGELOG_DATA } from './components/Changelog';
-import { LogEntry, LogType, ChangelogChange } from './types';
+import { LogEntry, LogType, ChangelogChange, ChangelogEntry } from './types';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);

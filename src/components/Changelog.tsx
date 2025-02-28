@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { ChangelogEntry } from '../types';
+import { ChangelogEntry, ChangelogChange } from '../types';
+
+// Re-export the ChangelogEntry type
+export type { ChangelogEntry, ChangelogChange };
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
