@@ -58,44 +58,54 @@ async function processVBAContainer(
   fileData: Uint8Array,
   logger: LoggerCallback
 ): Promise<Uint8Array> {
-  try {
-    const zip = await JSZip.loadAsync(fileData);
-    const vbaProject = zip.file('xl/vbaProject.bin');
-    
-    if (!vbaProject) {
-      logger('No VBA project found in document', 'error');
-      throw new Error('VBA project missing');
-    }
-
-    // Decrypt the VBA project using OfficeCrypto
-    const decrypted = await OfficeCrypto.decrypt(
-      await vbaProject.async('nodebuffer'),
-      { type: 'agile' } // Supports AES encryption used in modern Office
-    );
-
-    // Remove password protection flags
-    const modifiedProject = decrypted.map(byte => {
-      // Reset protection flags while preserving checksums
-      if (byte === 0x01 && decrypted[i-1] === 0x44 && decrypted[i-2] === 0x50) {
-        return 0x00;
-      }
-      return byte;
+  const originalZip = await JSZip.loadAsync(fileData);
+  
+  // Preserve all original files and their compression settings
+  const newZip = new JSZip();
+  
+  // 1. Copy all original files with their metadata
+  originalZip.forEach((path, entry) => {
+    newZip.file(path, entry, {
+      compression: entry.options.compression,
+      compressionOptions: entry.options.compressionOptions,
+      date: entry.options.date,
+      unixPermissions: entry.options.unixPermissions,
+      dosPermissions: entry.options.dosPermissions
     });
+  });
 
-    // Re-encrypt and update the ZIP
-    const encrypted = await OfficeCrypto.encrypt(
-      Buffer.from(modifiedProject),
-      { type: 'agile' }
-    );
-    
-    zip.file('xl/vbaProject.bin', encrypted);
-    return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-    
-  } catch (error) {
-    logger(`VBA processing failed: ${error.message}`, 'error');
-    throw error;
+  // 2. Only modify vbaProject.bin
+  const vbaProject = originalZip.file('xl/vbaProject.bin');
+  if (!vbaProject) {
+    logger('VBA project not found', 'error');
+    throw new Error('Missing vbaProject.bin');
   }
+
+  // 3. Process VBA project while preserving compression
+  const originalCompression = vbaProject.options.compression;
+  const decrypted = await OfficeCrypto.decrypt(
+    await vbaProject.async('nodebuffer'),
+    { type: 'agile' }
+  );
+  
+  const processed = await OfficeCrypto.removeProtection(decrypted);
+  const encrypted = await OfficeCrypto.encrypt(processed, { type: 'agile' });
+  
+  // 4. Update with original compression
+  newZip.file('xl/vbaProject.bin', encrypted, {
+    compression: originalCompression,
+    date: vbaProject.options.date
+  });
+
+  // 5. Generate with original settings
+  return newZip.generateAsync({
+    type: 'uint8array',
+    compression: 'STORE', // Force container-level store
+    platform: 'DOS', // Required for Excel compatibility
+    comment: originalZip.comment
+  });
 }
+
 /**
  * Checks if the file is a valid Excel file
  * @param data The file data
