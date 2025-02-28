@@ -147,6 +147,49 @@ export async function fixFileIntegrity(
         // Ensure workbook has proper XML structure
         let modified = false;
         
+        // Check for required namespaces
+        const workbook = doc.getElementsByTagName('workbook')[0];
+        if (workbook) {
+          // Check for required namespaces
+          const requiredNamespaces = [
+            { prefix: 'xmlns', uri: 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' },
+            { prefix: 'xmlns:r', uri: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships' }
+          ];
+          
+          for (const ns of requiredNamespaces) {
+            if (!workbook.hasAttribute(ns.prefix) || workbook.getAttribute(ns.prefix) !== ns.uri) {
+              workbook.setAttribute(ns.prefix, ns.uri);
+              modified = true;
+              logger(`Added missing namespace ${ns.prefix}="${ns.uri}" to workbook.xml`, 'info');
+            }
+          }
+          
+          // Ensure workbookPr exists
+          let workbookPr = doc.getElementsByTagName('workbookPr')[0];
+          if (!workbookPr) {
+            workbookPr = doc.createElement('workbookPr');
+            workbookPr.setAttribute('codeName', 'ThisWorkbook');
+            
+            // Insert after fileVersion if it exists, otherwise as first child
+            const fileVersion = doc.getElementsByTagName('fileVersion')[0];
+            if (fileVersion && fileVersion.parentNode) {
+              fileVersion.parentNode.insertBefore(workbookPr, fileVersion.nextSibling);
+            } else {
+              workbook.insertBefore(workbookPr, workbook.firstChild);
+            }
+            
+            modified = true;
+            logger('Added missing workbookPr element', 'info');
+          } else {
+            // Ensure codeName attribute exists
+            if (!workbookPr.hasAttribute('codeName')) {
+              workbookPr.setAttribute('codeName', 'ThisWorkbook');
+              modified = true;
+              logger('Added missing codeName attribute to workbookPr', 'info');
+            }
+          }
+        }
+        
         // Check for duplicate sheet IDs
         const sheets = doc.getElementsByTagName('sheet');
         const usedIds = new Set();
@@ -155,12 +198,21 @@ export async function fixFileIntegrity(
         for (let i = 0; i < sheets.length; i++) {
           let sheetId = sheets[i].getAttribute('sheetId');
           let name = sheets[i].getAttribute('name');
+          let rId = sheets[i].getAttribute('r:id');
+          
+          // Fix missing r:id attribute
+          if (!rId) {
+            sheets[i].setAttribute('r:id', `rId${i + 1}`);
+            modified = true;
+            logger(`Added missing r:id attribute to sheet ${name}`, 'info');
+          }
           
           if (usedIds.has(sheetId)) {
             // Duplicate ID found, generate a new one
             const newId = (i + 1).toString();
             sheets[i].setAttribute('sheetId', newId);
             modified = true;
+            logger(`Fixed duplicate sheetId for ${name}`, 'info');
           }
           
           if (usedNames.has(name)) {
@@ -168,10 +220,47 @@ export async function fixFileIntegrity(
             const newName = `Sheet${i + 1}`;
             sheets[i].setAttribute('name', newName);
             modified = true;
+            logger(`Fixed duplicate sheet name: ${name} -> ${newName}`, 'info');
           }
           
           usedIds.add(sheets[i].getAttribute('sheetId'));
           usedNames.add(sheets[i].getAttribute('name'));
+        }
+        
+        // Ensure sheets element exists and has at least one sheet
+        const sheetsElement = doc.getElementsByTagName('sheets')[0];
+        if (!sheetsElement || sheetsElement.childNodes.length === 0) {
+          // If no sheets element, create one with a default sheet
+          if (!sheetsElement) {
+            const newSheetsElement = doc.createElement('sheets');
+            const newSheet = doc.createElement('sheet');
+            newSheet.setAttribute('name', 'Sheet1');
+            newSheet.setAttribute('sheetId', '1');
+            newSheet.setAttribute('r:id', 'rId1');
+            newSheetsElement.appendChild(newSheet);
+            
+            // Insert after workbookPr
+            const workbookPr = doc.getElementsByTagName('workbookPr')[0];
+            if (workbookPr && workbookPr.parentNode) {
+              workbookPr.parentNode.insertBefore(newSheetsElement, workbookPr.nextSibling);
+            } else {
+              workbook.appendChild(newSheetsElement);
+            }
+            
+            modified = true;
+            logger('Added missing sheets element with default sheet', 'info');
+          } 
+          // If sheets element exists but has no children, add a default sheet
+          else if (sheetsElement.childNodes.length === 0) {
+            const newSheet = doc.createElement('sheet');
+            newSheet.setAttribute('name', 'Sheet1');
+            newSheet.setAttribute('sheetId', '1');
+            newSheet.setAttribute('r:id', 'rId1');
+            sheetsElement.appendChild(newSheet);
+            
+            modified = true;
+            logger('Added default sheet to empty sheets element', 'info');
+          }
         }
         
         if (modified) {

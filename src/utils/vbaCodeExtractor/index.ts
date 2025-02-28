@@ -136,5 +136,23 @@ export function createVBACodeFile(modules: VBAModule[], fileName: string): Blob 
   return new Blob([content], { type: 'text/plain' });
 }
 
+/**
+ * Creates a text file containing the process logs
+ * @param logs Array of log messages
+ * @param processType The type of process (e.g., "VBA Password Removal", "VBA Code Extraction")
+ * @returns A Blob containing the logs
+ */
+export function createProcessLogsFile(logs: string[], processType: string): Blob {
+  let content = `${processType} Process Logs\n`;
+  content += `Date: ${new Date().toLocaleString()}\n`;
+  content += `==========================================================\n\n`;
+  
+  logs.forEach(log => {
+    content += `${log}\n`;
+  });
+  
+  return new Blob([content], { type: 'text/plain' });
+}
+
 // Re-export types
 export type { VBAModule, VBAModuleType } from './types'; 

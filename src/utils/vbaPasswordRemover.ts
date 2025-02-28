@@ -148,7 +148,7 @@ export async function removeVBAPassword(
     const modifiedFile = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
-      compressionOptions: { level: 4 }, // Reduced from 6 to prevent over-compression
+      compressionOptions: { level: 3 }, // Further reduced to prevent over-compression
       mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
     });
     
@@ -182,7 +182,7 @@ export async function removeVBAPassword(
           return await zip.generateAsync({ 
             type: 'blob',
             compression: 'DEFLATE',
-            compressionOptions: { level: 3 }, // Even more conservative compression
+            compressionOptions: { level: 2 }, // Even more conservative compression
             mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
           });
         } catch (secondError) {
@@ -235,41 +235,186 @@ async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Prom
     
     // Check for critical content types
     const criticalContentTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
-      'application/vnd.ms-office.vbaProject',
-      'application/vnd.openxmlformats-package.relationships+xml'
+      { partName: '/xl/workbook.xml', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml' },
+      { partName: '/xl/vbaProject.bin', contentType: 'application/vnd.ms-office.vbaProject' },
+      { extension: 'rels', contentType: 'application/vnd.openxmlformats-package.relationships+xml' },
+      { extension: 'xml', contentType: 'application/xml' }
     ];
     
     let missingTypes = [];
-    for (const type of criticalContentTypes) {
-      if (!contentTypes.includes(type)) {
-        missingTypes.push(type);
+    
+    try {
+      // Try to parse the content types XML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(contentTypes, 'text/xml');
+      const types = doc.getElementsByTagName('Types')[0];
+      
+      if (types) {
+        // Check for missing default extensions
+        for (const type of criticalContentTypes) {
+          if (type.extension) {
+            let found = false;
+            const defaults = doc.getElementsByTagName('Default');
+            
+            for (let i = 0; i < defaults.length; i++) {
+              if (defaults[i].getAttribute('Extension') === type.extension) {
+                found = true;
+                break;
+              }
+            }
+            
+            if (!found) {
+              const newDefault = doc.createElement('Default');
+              newDefault.setAttribute('Extension', type.extension);
+              newDefault.setAttribute('ContentType', type.contentType);
+              types.appendChild(newDefault);
+              missingTypes.push(`Default: ${type.extension} -> ${type.contentType}`);
+            }
+          } else if (type.partName) {
+            let found = false;
+            const overrides = doc.getElementsByTagName('Override');
+            
+            for (let i = 0; i < overrides.length; i++) {
+              if (overrides[i].getAttribute('PartName') === type.partName) {
+                found = true;
+                break;
+              }
+            }
+            
+            if (!found) {
+              const newOverride = doc.createElement('Override');
+              newOverride.setAttribute('PartName', type.partName);
+              newOverride.setAttribute('ContentType', type.contentType);
+              types.appendChild(newOverride);
+              missingTypes.push(`Override: ${type.partName} -> ${type.contentType}`);
+            }
+          }
+        }
         
-        // Add the missing content type
-        if (type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml') {
+        // Add worksheet content types
+        for (const worksheetPath of worksheets) {
+          const partName = `/${worksheetPath}`;
+          let found = false;
+          const overrides = doc.getElementsByTagName('Override');
+          
+          for (let i = 0; i < overrides.length; i++) {
+            if (overrides[i].getAttribute('PartName') === partName) {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found) {
+            const newOverride = doc.createElement('Override');
+            newOverride.setAttribute('PartName', partName);
+            newOverride.setAttribute('ContentType', 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml');
+            types.appendChild(newOverride);
+            missingTypes.push(`Override: ${partName} -> worksheet`);
+          }
+        }
+        
+        // Add content type for shared strings if it exists
+        if (zip.file('xl/sharedStrings.xml')) {
+          let found = false;
+          const overrides = doc.getElementsByTagName('Override');
+          
+          for (let i = 0; i < overrides.length; i++) {
+            if (overrides[i].getAttribute('PartName') === '/xl/sharedStrings.xml') {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found) {
+            const newOverride = doc.createElement('Override');
+            newOverride.setAttribute('PartName', '/xl/sharedStrings.xml');
+            newOverride.setAttribute('ContentType', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml');
+            types.appendChild(newOverride);
+            missingTypes.push('Override: /xl/sharedStrings.xml -> sharedStrings');
+          }
+        }
+        
+        // Add content type for styles if it exists
+        if (zip.file('xl/styles.xml')) {
+          let found = false;
+          const overrides = doc.getElementsByTagName('Override');
+          
+          for (let i = 0; i < overrides.length; i++) {
+            if (overrides[i].getAttribute('PartName') === '/xl/styles.xml') {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found) {
+            const newOverride = doc.createElement('Override');
+            newOverride.setAttribute('PartName', '/xl/styles.xml');
+            newOverride.setAttribute('ContentType', 'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml');
+            types.appendChild(newOverride);
+            missingTypes.push('Override: /xl/styles.xml -> styles');
+          }
+        }
+        
+        // Add content type for theme if it exists
+        if (zip.file('xl/theme/theme1.xml')) {
+          let found = false;
+          const overrides = doc.getElementsByTagName('Override');
+          
+          for (let i = 0; i < overrides.length; i++) {
+            if (overrides[i].getAttribute('PartName') === '/xl/theme/theme1.xml') {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found) {
+            const newOverride = doc.createElement('Override');
+            newOverride.setAttribute('PartName', '/xl/theme/theme1.xml');
+            newOverride.setAttribute('ContentType', 'application/vnd.openxmlformats-officedocument.theme+xml');
+            types.appendChild(newOverride);
+            missingTypes.push('Override: /xl/theme/theme1.xml -> theme');
+          }
+        }
+        
+        // Serialize the updated XML
+        const serializer = new XMLSerializer();
+        contentTypes = serializer.serializeToString(doc);
+        zip.file('[Content_Types].xml', contentTypes);
+      }
+    } catch (xmlError) {
+      logger(`Error parsing content types XML: ${xmlError}. Using string-based approach.`, 'warning');
+      
+      // Fallback to string-based approach if XML parsing fails
+      for (const type of criticalContentTypes) {
+        if (type.extension && !contentTypes.includes(`Extension="${type.extension}"`)) {
           contentTypes = contentTypes.replace(
             /<Types[^>]*>/,
-            `$&\n  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
+            `$&\n  <Default Extension="${type.extension}" ContentType="${type.contentType}"/>`
           );
-          logger(`Added missing content type: ${type}`, 'info');
-        } else if (type === 'application/vnd.ms-office.vbaProject') {
+          missingTypes.push(`Default: ${type.extension} -> ${type.contentType}`);
+        } else if (type.partName && !contentTypes.includes(`PartName="${type.partName}"`)) {
           contentTypes = contentTypes.replace(
             /<Types[^>]*>/,
-            `$&\n  <Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/>`
+            `$&\n  <Override PartName="${type.partName}" ContentType="${type.contentType}"/>`
           );
-          logger(`Added missing content type: ${type}`, 'info');
-        } else if (type === 'application/vnd.openxmlformats-package.relationships+xml') {
-          contentTypes = contentTypes.replace(
-            /<Types[^>]*>/,
-            `$&\n  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`
-          );
-          logger(`Added missing content type: ${type}`, 'info');
+          missingTypes.push(`Override: ${type.partName} -> ${type.contentType}`);
         }
       }
+      
+      // Add worksheet content types
+      for (const worksheetPath of worksheets) {
+        const partName = `/${worksheetPath}`;
+        if (!contentTypes.includes(`PartName="${partName}"`)) {
+          contentTypes = contentTypes.replace(
+            /<Types[^>]*>/,
+            `$&\n  <Override PartName="${partName}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+          );
+          missingTypes.push(`Override: ${partName} -> worksheet`);
+        }
+      }
+      
+      zip.file('[Content_Types].xml', contentTypes);
     }
-    
-    // Update the content types file
-    zip.file('[Content_Types].xml', contentTypes);
     
     if (missingTypes.length > 0) {
       logger(`Fixed missing content types: ${missingTypes.join(', ')}`, 'success');
@@ -282,7 +427,7 @@ async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Prom
     let workbookRels = await workbookRelsFile.async('string');
     
     // Check if vbaProject relationship exists
-    if (!workbookRels.includes('vnd.ms-office.vbaProject')) {
+    if (!workbookRels.includes('vnd.ms-office.vbaProject') && zip.file('xl/vbaProject.bin')) {
       // Add the relationship if it doesn't exist
       workbookRels = workbookRels.replace(
         /<\?xml[^>]*\?>\s*<Relationships[^>]*>/,
@@ -291,6 +436,79 @@ async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Prom
       zip.file('xl/_rels/workbook.xml.rels', workbookRels);
       logger('Added missing VBA project relationship', 'info');
     }
+    
+    // Check for worksheet relationships
+    for (const worksheetPath of worksheets) {
+      const sheetName = worksheetPath.replace('xl/worksheets/', '');
+      if (!workbookRels.includes(`Target="worksheets/${sheetName}"`)) {
+        // Generate a unique rId
+        let maxRid = 0;
+        const ridMatches = workbookRels.match(/Id="rId(\d+)"/g);
+        if (ridMatches) {
+          for (const match of ridMatches) {
+            const ridNum = parseInt(match.replace(/Id="rId(\d+)"/, '$1'));
+            if (ridNum > maxRid) {
+              maxRid = ridNum;
+            }
+          }
+        }
+        
+        const newRid = `rId${maxRid + 1}`;
+        workbookRels = workbookRels.replace(
+          /<Relationships[^>]*>/,
+          `$&\n  <Relationship Id="${newRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/${sheetName}"/>`
+        );
+        
+        // Also add the sheet to workbook.xml if it's not already there
+        const workbookFile = zip.file('xl/workbook.xml');
+        if (workbookFile) {
+          let workbookContent = await workbookFile.async('string');
+          const sheetId = sheetName.replace(/[^\d]/g, '');
+          
+          if (!workbookContent.includes(`r:id="${newRid}"`) && !workbookContent.includes(`name="Sheet${sheetId}"`)) {
+            workbookContent = workbookContent.replace(
+              /<sheets[^>]*>/,
+              `$&\n    <sheet name="Sheet${sheetId}" sheetId="${sheetId}" r:id="${newRid}"/>`
+            );
+            zip.file('xl/workbook.xml', workbookContent);
+            logger(`Added missing sheet ${sheetId} to workbook.xml`, 'info');
+          }
+        }
+        
+        logger(`Added missing relationship for ${sheetName}`, 'info');
+      }
+    }
+    
+    zip.file('xl/_rels/workbook.xml.rels', workbookRels);
+  }
+  
+  // Ensure the main .rels file is correct
+  const mainRelsFile = zip.file('_rels/.rels');
+  if (mainRelsFile) {
+    let mainRels = await mainRelsFile.async('string');
+    let modified = false;
+    
+    // Check for workbook relationship
+    if (!mainRels.includes('officeDocument/2006/relationships/officeDocument')) {
+      mainRels = mainRels.replace(
+        /<Relationships[^>]*>/,
+        `$&\n  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>`
+      );
+      modified = true;
+      logger('Added missing workbook relationship to main .rels', 'info');
+    }
+    
+    if (modified) {
+      zip.file('_rels/.rels', mainRels);
+    }
+  } else {
+    // Create the main .rels file if it doesn't exist
+    const mainRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+    zip.file('_rels/.rels', mainRels);
+    logger('Created missing main .rels file', 'info');
   }
   
   logger('Critical component check completed', 'info');
