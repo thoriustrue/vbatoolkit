@@ -24,8 +24,7 @@ export async function removeVBAPassword(
     const zip = await JSZip.loadAsync(fileData);
     
     // Validate before processing
-    const admZip = new AdmZip(Buffer.from(fileData));
-    if (!validateOfficeCRC(admZip, logger)) {
+    if (!validateOfficeCRC(zip, logger)) {
       throw new Error('Invalid Office file structure');
     }
 
@@ -33,8 +32,7 @@ export async function removeVBAPassword(
     const processed = await processVBAContainer(fileData, logger);
     
     // Final validation
-    const finalZip = new AdmZip(Buffer.from(processed));
-    if (!validateOfficeCRC(finalZip, logger)) {
+    if (!validateOfficeCRC(zip, logger)) {
       throw new Error('Final file failed CRC validation');
     }
 
