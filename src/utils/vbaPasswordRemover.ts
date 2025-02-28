@@ -148,7 +148,7 @@ export async function removeVBAPassword(
     const modifiedFile = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
-      compressionOptions: { level: 3 }, // Further reduced to prevent over-compression
+      compressionOptions: { level: 1 }, // Minimal compression to ensure file integrity
       mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
     });
     
@@ -178,13 +178,22 @@ export async function removeVBAPassword(
           // Preserve Excel components
           await preserveExcelComponents(zip, logger);
           
-          // Generate the file with more conservative settings
-          return await zip.generateAsync({ 
-            type: 'blob',
-            compression: 'DEFLATE',
-            compressionOptions: { level: 2 }, // Even more conservative compression
-            mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
-          });
+          // Try recovery with reduced compression
+          logger('Attempting recovery with minimal compression...', 'info');
+          
+          try {
+            const modifiedFile = await zip.generateAsync({
+              type: 'blob',
+              compression: 'DEFLATE',
+              compressionOptions: { level: 0 }, // No compression for maximum compatibility
+              mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12'
+            });
+            
+            return modifiedFile;
+          } catch (recoveryError) {
+            logger(`Recovery failed: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`, 'error');
+            return null;
+          }
         } catch (secondError) {
           logger(`Error after recovery attempt: ${secondError instanceof Error ? secondError.message : String(secondError)}`, 'error');
         }

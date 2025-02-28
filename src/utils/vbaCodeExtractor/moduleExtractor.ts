@@ -1,54 +1,64 @@
+import { WorkBook } from 'xlsx';
 import { LoggerCallback } from '../../types';
 import { VBAModule, VBAModuleType } from './types';
-import * as XLSX from 'xlsx';
 
 /**
- * Extracts VBA modules from a workbook using SheetJS
- * @param workbook The workbook to extract VBA modules from
+ * Extracts VBA modules from a workbook
+ * @param workbook The workbook containing VBA
  * @param logger Callback function for logging messages
  * @returns An array of VBA modules
  */
-export function extractVBAModulesFromWorkbook(workbook: XLSX.WorkBook, logger: LoggerCallback): VBAModule[] {
+export function extractVBAModulesFromWorkbook(
+  workbook: WorkBook,
+  logger: LoggerCallback
+): VBAModule[] {
   const modules: VBAModule[] = [];
   
   try {
-    // Access the VBA project
-    if (!workbook.Workbook || !(workbook.Workbook as any).VBAProject) {
+    // Check if the workbook has VBA
+    if (!workbook.vbaraw) {
+      logger('No VBA code found in this workbook', 'warning');
       return modules;
     }
     
-    // Use type assertion to access VBAProject
-    const vbaProject = (workbook.Workbook as any).VBAProject;
+    // Try to access the VBA project
+    const vbaProject = workbook.Workbook?.VBAProject;
+    if (!vbaProject) {
+      logger('VBA project structure not accessible', 'warning');
+      return modules;
+    }
     
-    // Get the module names from the VBA project
-    const moduleNames = Object.keys(vbaProject);
-    
-    for (const moduleName of moduleNames) {
-      // Skip non-module properties
-      if (moduleName === 'Name' || moduleName === 'CodeName' || typeof vbaProject[moduleName] !== 'string') {
-        continue;
-      }
-      
-      // Get the module code
-      const moduleCode = vbaProject[moduleName].toString();
-      
-      if (moduleCode.trim()) {
-        // Determine module type based on content
-        const moduleType = determineModuleType(moduleCode);
+    // Extract modules from the VBA project
+    if (vbaProject.modules) {
+      for (const [name, content] of Object.entries(vbaProject.modules)) {
+        // Determine module type based on name
+        let moduleType = VBAModuleType.Standard;
+        
+        if (name === 'ThisWorkbook') {
+          moduleType = VBAModuleType.Document;
+        } else if (name.startsWith('Sheet')) {
+          moduleType = VBAModuleType.Document;
+        } else if (name.includes('UserForm')) {
+          moduleType = VBAModuleType.Form;
+        } else if (name.includes('Class')) {
+          moduleType = VBAModuleType.Class;
+        }
         
         modules.push({
-          name: moduleName,
+          name,
           type: moduleType,
-          code: moduleCode
+          code: typeof content === 'string' ? content : 'Code could not be extracted'
         });
-        
-        logger(`Extracted module: ${moduleName} (${moduleType})`, 'info');
       }
+      
+      logger(`Extracted ${modules.length} VBA modules from the workbook`, 'success');
+    } else {
+      logger('No modules found in the VBA project', 'warning');
     }
     
     return modules;
   } catch (error) {
-    logger(`Error in primary extraction method: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    logger(`Error extracting VBA modules: ${error instanceof Error ? error.message : String(error)}`, 'error');
     return modules;
   }
 }

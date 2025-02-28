@@ -1,54 +1,121 @@
+import { LoggerCallback } from '../../types';
+
 /**
- * Cleans and decodes VBA code from various encodings
- * @param code The raw VBA code to clean and decode
+ * Cleans and decodes VBA code
+ * @param code The raw VBA code to clean
  * @returns The cleaned and decoded VBA code
  */
 export function cleanAndDecodeVBACode(code: string): string {
-  // Remove common binary artifacts and control characters
-  let cleanedCode = code.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  if (!code || code.trim() === '') {
+    return '\'No code content available';
+  }
   
-  // Try to detect and fix encoding issues
-  cleanedCode = fixEncodingIssues(cleanedCode);
-  
-  // Remove trailing nulls and whitespace
-  cleanedCode = cleanedCode.replace(/\x00+$/, '').trim();
-  
-  // Normalize line endings
-  cleanedCode = cleanedCode.replace(/\r\n|\r|\n/g, '\r\n');
-  
-  return cleanedCode;
+  try {
+    // Remove common binary artifacts
+    let cleanedCode = code
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+      .replace(/\r\n/g, '\n')                           // Normalize line endings
+      .replace(/\r/g, '\n')                             // Convert remaining CR to LF
+      .replace(/\n{3,}/g, '\n\n');                      // Remove excessive blank lines
+    
+    // Fix common encoding issues
+    cleanedCode = fixEncodingIssues(cleanedCode);
+    
+    // Add proper line endings if missing
+    if (!cleanedCode.endsWith('\n')) {
+      cleanedCode += '\n';
+    }
+    
+    return cleanedCode;
+  } catch (error) {
+    console.error('Error cleaning VBA code:', error);
+    return code; // Return original if cleaning fails
+  }
 }
 
 /**
- * Attempts to fix common encoding issues in VBA code
+ * Fixes common encoding issues in VBA code
  * @param code The code to fix
  * @returns The fixed code
  */
 function fixEncodingIssues(code: string): string {
-  // Fix UTF-16 artifacts (common in Excel VBA)
-  let fixed = code.replace(/\u0000/g, '');
+  // Replace common encoding artifacts
+  return code
+    .replace(/Ã¢â‚¬â„¢/g, "'")     // Smart single quote
+    .replace(/Ã¢â‚¬Å"/g, '"')      // Smart double quote open
+    .replace(/Ã¢â‚¬Â/g, '"')       // Smart double quote close
+    .replace(/Ã¢â‚¬â€œ/g, '-')      // Em dash
+    .replace(/Ã¢â‚¬â€/g, '-')       // En dash
+    .replace(/Ã¢â‚¬Â¦/g, '...')     // Ellipsis
+    .replace(/Ã‚/g, '')            // Non-breaking space artifact
+    .replace(/Ã¯Â¿Â½/g, '?');       // Replacement character
+}
+
+/**
+ * Attempts to extract meaningful code from a corrupted VBA module
+ * @param corruptedCode The corrupted VBA code
+ * @param logger Optional logger callback
+ * @returns The best attempt at extracting meaningful code
+ */
+export function extractFromCorruptedCode(
+  corruptedCode: string, 
+  logger?: LoggerCallback
+): string {
+  if (!corruptedCode || corruptedCode.trim() === '') {
+    return '\'No code content available';
+  }
   
-  // Fix common Unicode replacement characters
-  fixed = fixed.replace(/\uFFFD/g, '?');
-  
-  // Fix common encoding issues with special characters
-  const encodingFixes: Record<string, string> = {
-    '\u00e2\u20ac\u201c': '\u2013', // en dash
-    '\u00e2\u20ac\u201d': '\u2014', // em dash
-    '\u00e2\u20ac\u02dc': '\u2018', // left single quote
-    '\u00e2\u20ac\u2122': '\u2019', // right single quote
-    '\u00e2\u20ac\u0153': '\u201c', // left double quote
-    '\u00e2\u20ac\u009d': '\u201d', // right double quote
-    '\u00e2\u20ac\u00a6': '\u2026', // ellipsis
-    '\u00c2\u00a9': '\u00a9', // copyright
-    '\u00c2\u00ae': '\u00ae', // registered trademark
-    '\u00e2\u201e\u00a2': '\u2122', // trademark
-  };
-  
-  // Apply all encoding fixes
-  Object.entries(encodingFixes).forEach(([broken, replacement]) => {
-    fixed = fixed.replace(new RegExp(broken, 'g'), replacement);
-  });
-  
-  return fixed;
+  try {
+    // Log the attempt if logger is provided
+    if (logger) {
+      logger('Attempting to extract code from corrupted module', 'info');
+    }
+    
+    // Look for VBA code patterns
+    const codePatterns = [
+      // Sub/Function declarations
+      /(?:Public |Private |Friend )?(?:Sub|Function|Property Get|Property Let|Property Set)[^\n]+\n[\s\S]+?End (?:Sub|Function|Property)/gi,
+      
+      // Variable declarations
+      /(?:Dim|Public|Private|Global|Static|Const) [^\n]+/gi,
+      
+      // Type declarations
+      /Type[\s\S]+?End Type/gi,
+      
+      // Enum declarations
+      /Enum[\s\S]+?End Enum/gi
+    ];
+    
+    let extractedParts: string[] = [];
+    
+    // Apply each pattern and collect matches
+    for (const pattern of codePatterns) {
+      const matches = corruptedCode.match(pattern);
+      if (matches) {
+        extractedParts = extractedParts.concat(matches);
+      }
+    }
+    
+    if (extractedParts.length > 0) {
+      // Join the extracted parts with blank lines
+      let result = extractedParts.join('\n\n');
+      
+      // Clean the result
+      result = cleanAndDecodeVBACode(result);
+      
+      if (logger) {
+        logger(`Successfully extracted ${extractedParts.length} code fragments`, 'success');
+      }
+      
+      return result;
+    } else {
+      // If no patterns matched, return a placeholder
+      return '\'Code could not be extracted from corrupted module';
+    }
+  } catch (error) {
+    if (logger) {
+      logger(`Error extracting from corrupted code: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+    return '\'Error extracting code from corrupted module';
+  }
 } 
