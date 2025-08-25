@@ -15,7 +15,7 @@ export async function fixFileIntegrity(
     // 1. Fix Content_Types.xml
     const contentTypes = zip.file('[Content_Types].xml');
     if (contentTypes) {
-      let content = await contentTypes.async('string');
+      const content = await contentTypes.async('string');
       
       // Ensure all required content types are present
       const requiredTypes = [
@@ -91,7 +91,7 @@ export async function fixFileIntegrity(
     for (const relFile of relFiles) {
       const file = zip.file(relFile);
       if (file) {
-        let content = await file.async('string');
+        const content = await file.async('string');
         
         try {
           // Parse and fix XML structure
@@ -111,7 +111,7 @@ export async function fixFileIntegrity(
             let modified = false;
             
             for (let i = 0; i < rels.length; i++) {
-              let id = rels[i].getAttribute('Id');
+              const id = rels[i].getAttribute('Id');
               if (usedIds.has(id)) {
                 // Duplicate ID found, generate a new one
                 const newId = `rId${i + 100}`; // Use a high number to avoid conflicts
@@ -137,7 +137,7 @@ export async function fixFileIntegrity(
     // 3. Fix workbook.xml
     const workbookFile = zip.file('xl/workbook.xml');
     if (workbookFile) {
-      let content = await workbookFile.async('string');
+      const content = await workbookFile.async('string');
       
       try {
         // Parse and fix XML structure
@@ -274,7 +274,7 @@ export async function fixFileIntegrity(
           // Fix duplicate name
           if (usedNames.has(name)) {
             // Generate a unique name
-            let baseName = name.replace(/\d+$/, '');
+            const baseName = name.replace(/\d+$/, '');
             let counter = 1;
             let newName = `${baseName}${counter}`;
             
@@ -292,7 +292,7 @@ export async function fixFileIntegrity(
           // Fix duplicate r:id
           if (usedRIds.has(rId)) {
             // Generate a unique r:id
-            let newRId = `rId${i + 100}`; // Use high numbers to avoid conflicts
+            const newRId = `rId${i + 100}`; // Use high numbers to avoid conflicts
             sheets[i].setAttribute('r:id', newRId);
             modified = true;
             logger(`Fixed duplicate r:id for ${name}: ${rId} -> ${newRId}`, 'info');
@@ -372,7 +372,7 @@ export async function fixFileIntegrity(
     for (const worksheetPath of worksheetFiles) {
       const worksheet = zip.file(worksheetPath);
       if (worksheet) {
-        let content = await worksheet.async('string');
+        const content = await worksheet.async('string');
         
         try {
           // Parse and fix XML structure
@@ -744,7 +744,7 @@ export async function fixFileIntegrity(
             zip.remove(file);
             logger(`Removed potentially corrupted file: ${file}`, 'info');
           }
-        } catch (err) {
+        } catch {
           // If we can't read the file, it's likely corrupted
           zip.remove(file);
           logger(`Removed unreadable file: ${file}`, 'info');

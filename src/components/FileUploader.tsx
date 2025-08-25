@@ -17,7 +17,7 @@ export function FileUploader({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateFile = (file: File): boolean => {
+  const validateFile = useCallback((file: File): boolean => {
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
     
     if (!acceptedExtensions.includes(fileExtension)) {
@@ -31,7 +31,7 @@ export function FileUploader({
     }
     
     return true;
-  };
+  }, [acceptedExtensions, maxSizeInMB, addLog]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();

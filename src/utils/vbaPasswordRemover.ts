@@ -250,7 +250,7 @@ async function preserveExcelComponents(zip: JSZip, logger: LoggerCallback): Prom
       { extension: 'xml', contentType: 'application/xml' }
     ];
     
-    let missingTypes = [];
+    const missingTypes = [];
     
     try {
       // Try to parse the content types XML

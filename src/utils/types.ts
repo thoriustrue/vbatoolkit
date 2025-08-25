@@ -1,5 +1,2 @@
-export interface LogEntry {
-  message: string;
-  type: 'error' | 'info' | 'success';
-  timestamp: number;
-} 
+// Re-export types from main types file to maintain consistency
+export type { LogType, LogEntry, LoggerCallback, ProgressCallback } from '../types'; 

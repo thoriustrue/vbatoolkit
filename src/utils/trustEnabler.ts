@@ -107,7 +107,7 @@ export async function enableMaximumTrust(
     }
     
     // 4. Add trusted document settings in custom.xml
-    let customPropsFile = zip.file('docProps/custom.xml');
+    const customPropsFile = zip.file('docProps/custom.xml');
     if (!customPropsFile) {
       // Create custom.xml if it doesn't exist
       const customXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

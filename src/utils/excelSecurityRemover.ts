@@ -126,7 +126,7 @@ export async function removeExcelSecurity(
     
     for (const secFile of securitySettingsFiles) {
       if (zipData.files[secFile]) {
-        let secXml = await zipData.files[secFile].async('text');
+        const secXml = await zipData.files[secFile].async('text');
         
         // Modify security settings to auto-enable external links
         if (secXml.includes('relationships') || secXml.includes('Relationship')) {

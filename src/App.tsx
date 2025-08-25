@@ -2,15 +2,13 @@ import React, { useState, useCallback } from 'react';
 import { Upload } from 'lucide-react';
 import { removeVBAPassword } from './utils/vbaPasswordRemover';
 import { extractVBACode, VBAModule, createVBACodeFile } from './utils/vbaCodeExtractor/index';
-import { injectVBACode } from './utils/vbaCodeInjector';
 import { ErrorBoundary, useErrorLogger } from './components/ErrorLogger';
-import { ErrorLog } from './components/ErrorLog';
 import { FileUploader } from './components/FileUploader';
 import { LogViewer } from './components/LogViewer';
 import { ProcessingActions } from './components/ProcessingActions';
 import { Changelog, ChangelogEntryComponent } from './components/Changelog';
 import { CHANGELOG_DATA } from './components/Changelog';
-import { LogEntry, LogType, ChangelogChange, ChangelogEntry } from './types';
+import { LogEntry, LogType } from './types';
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -19,7 +17,6 @@ function App() {
   const [extractedModules, setExtractedModules] = useState<VBAModule[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [progress, setProgress] = useState(0);
-  const [activeTab, setActiveTab] = useState('main');
   const { logError } = useErrorLogger();
 
   const addLog = useCallback((message: string, type: LogType = 'info') => {

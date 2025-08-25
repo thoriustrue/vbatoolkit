@@ -1,5 +1,3 @@
-import { LoggerCallback } from '../../types';
-
 /**
  * Cleans and decodes raw VBA code
  * @param code The raw VBA code to clean
@@ -9,6 +7,7 @@ export function cleanAndDecodeVBACode(code: string): string {
   if (!code) return '';
   
   // Remove binary artifacts and control characters
+  // eslint-disable-next-line no-control-regex
   let cleanedCode = code.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
   
   // Remove VBA attributes section

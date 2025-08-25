@@ -1,7 +1,4 @@
-import React, { useState } from 'react';
-import { Box, Button, Typography, Paper, Divider } from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import DownloadIcon from '@mui/icons-material/Download';
+import React from 'react';
 import { createProcessLogsFile } from '../utils/vbaCodeExtractor';
 
 interface ProcessLogsProps {
@@ -10,16 +7,6 @@ interface ProcessLogsProps {
 }
 
 const ProcessLogs: React.FC<ProcessLogsProps> = ({ logs, processType }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    const logsText = logs.join('\n');
-    navigator.clipboard.writeText(logsText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
   const handleDownload = () => {
     const logsBlob = createProcessLogsFile(logs, processType);
     const url = URL.createObjectURL(logsBlob);
@@ -33,59 +20,24 @@ const ProcessLogs: React.FC<ProcessLogsProps> = ({ logs, processType }) => {
   };
 
   return (
-    <Paper 
-      elevation={3} 
-      sx={{ 
-        p: 2, 
-        mt: 2, 
-        mb: 2, 
-        maxHeight: '300px', 
-        overflow: 'auto',
-        backgroundColor: '#f5f5f5',
-        borderLeft: '4px solid #2196f3'
-      }}
-    >
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-        <Typography variant="h6" component="h3">
-          {processType} Logs
-        </Typography>
-        <Box>
-          <Button 
-            startIcon={<ContentCopyIcon />} 
-            onClick={handleCopy} 
-            color={copied ? "success" : "primary"}
-            size="small"
-            sx={{ mr: 1 }}
-          >
-            {copied ? "Copied!" : "Copy Logs"}
-          </Button>
-          <Button 
-            startIcon={<DownloadIcon />} 
-            onClick={handleDownload} 
-            color="primary"
-            size="small"
-          >
-            Download
-          </Button>
-        </Box>
-      </Box>
-      <Divider sx={{ mb: 1 }} />
-      <Box sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', fontSize: '0.85rem' }}>
+    <div className="bg-gray-50 p-4 mt-4 rounded-lg border-l-4 border-blue-500">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-lg font-semibold">{processType} Logs</h3>
+        <button 
+          onClick={handleDownload}
+          className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+        >
+          Download Logs
+        </button>
+      </div>
+      <div className="max-h-64 overflow-auto font-mono text-sm bg-white p-2 rounded border">
         {logs.map((log, index) => (
-          <Typography 
-            key={index} 
-            variant="body2" 
-            component="div" 
-            sx={{ 
-              py: 0.5,
-              borderBottom: index < logs.length - 1 ? '1px dashed rgba(0,0,0,0.1)' : 'none'
-            }}
-          >
+          <div key={index} className="py-1 border-b border-gray-100 last:border-b-0">
             {log}
-          </Typography>
+          </div>
         ))}
-      </Box>
-    </Paper>
+      </div>
+    </div>
   );
 };
 

@@ -1,14 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
-import { NodeModulesPolyfillPlugin } from '@esbuild-plugins/node-modules-polyfill';
 
 /**
  * Vite configuration for the Excel VBA Toolkit
  * 
  * This configuration includes:
  * - React plugin for JSX/TSX support
- * - Node.js polyfills for browser compatibility
  * - Buffer polyfill for binary data handling
  * - GitHub Pages deployment settings
  */
@@ -22,19 +19,8 @@ export default defineConfig({
   
   // Optimize dependencies
   optimizeDeps: {
-    include: ['buffer', 'xlsx/dist/xlsx.full.min.js'],
-    esbuildOptions: {
-      define: {
-        global: 'globalThis'
-      },
-      plugins: [
-        NodeGlobalsPolyfillPlugin({
-          buffer: true,
-          process: true
-        }),
-        NodeModulesPolyfillPlugin()
-      ]
-    }
+    include: ['buffer'],
+    exclude: ['@esbuild-plugins/node-globals-polyfill', '@esbuild-plugins/node-modules-polyfill']
   },
   
   // GitHub Pages configuration
