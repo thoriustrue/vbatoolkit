@@ -5,6 +5,7 @@ import { validateOfficeCRC, isValidZip } from './zipValidator';
 import { removeSheetProtections } from './sheetProtectionRemover';
 import { fixFileIntegrity } from './fileIntegrityFixer';
 import { enableMaximumTrust } from './trustEnabler';
+import { removeVBAProtectionEnhanced, validateVBAProject } from './vbaProtectionRemover';
 
 export async function removeVBAPassword(
   file: File,
@@ -45,22 +46,43 @@ export async function removeVBAPassword(
     // Get vbaProject.bin content
     const vbaContent = await vbaProject.async('uint8array');
     
-    // Process the VBA project to remove password
-    const modifiedVba = preserveVBAStructure(vbaContent, logger);
-    if (!modifiedVba) {
-      throw new Error('Failed to remove VBA password');
+    // Validate VBA project structure first
+    logger('Validating VBA project structure...', 'info');
+    const isValidBefore = validateVBAProject(vbaContent, logger);
+    if (!isValidBefore) {
+      logger('Warning: VBA project may be corrupted, proceeding anyway...', 'warning');
     }
     
-    // Validate and update VBA project checksum
-    const finalVba = updateVBAProjectChecksum(modifiedVba, logger);
-    if (!finalVba) {
-      throw new Error('Failed to update VBA project checksum');
+    // Process the VBA project to remove password using enhanced method
+    logger('Attempting enhanced VBA protection removal...', 'info');
+    let modifiedVba = removeVBAProtectionEnhanced(vbaContent, logger);
+    if (!modifiedVba) {
+      // Fallback to original method
+      logger('Enhanced method failed, trying legacy method...', 'warning');
+      const fallbackVba = preserveVBAStructure(vbaContent, logger);
+      if (!fallbackVba) {
+        throw new Error('Both enhanced and legacy VBA protection removal methods failed');
+      }
+      modifiedVba = fallbackVba;
+    }
+    
+    // Validate the modified VBA project
+    logger('Validating modified VBA project...', 'info');
+    const isValidAfter = validateVBAProject(modifiedVba, logger);
+    if (!isValidAfter) {
+      logger('Warning: Modified VBA project checksum validation failed', 'warning');
+      // Try to fix the checksum
+      const finalVba = updateVBAProjectChecksum(modifiedVba, logger);
+      if (finalVba && validateVBAProject(finalVba, logger)) {
+        logger('Checksum successfully corrected', 'success');
+        modifiedVba = finalVba;
+      }
     }
     
     progressCallback(0.6);
     
     // Replace the vbaProject.bin with the modified version
-    zip.file('xl/vbaProject.bin', finalVba);
+    zip.file('xl/vbaProject.bin', modifiedVba);
     
     logger('Auto-enabling macros and external links...', 'info');
     
