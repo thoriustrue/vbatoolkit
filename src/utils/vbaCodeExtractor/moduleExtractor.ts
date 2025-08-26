@@ -36,7 +36,7 @@ export function extractVBAModulesFromWorkbook(
         
         const name = module.name;
         let type = VBAModuleType.Unknown;
-        let code = module.code || '';
+        const code = module.code || '';
         
         // Determine module type based on name and content
         if (name.toLowerCase() === 'thisdocument' || name.toLowerCase() === 'thisworkbook') {
@@ -290,6 +290,7 @@ export function extractCodeFromModules(
  */
 function cleanModuleCode(code: string): string {
   // Remove binary artifacts
+  // eslint-disable-next-line no-control-regex
   code = code.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
   
   // Extract only the VBA code part

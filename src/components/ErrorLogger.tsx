@@ -40,7 +40,7 @@ export function useErrorLogger() {
 export function ErrorBoundary({ children }: { children: React.ReactNode }) {
   const [hasError, setHasError] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [componentStack, setComponentStack] = useState<string | null>(null);
+  const [componentStack] = useState<string | null>(null);
   
   useEffect(() => {
     const handleGlobalError = (event: ErrorEvent) => {

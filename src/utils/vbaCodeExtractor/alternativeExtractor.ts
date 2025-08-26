@@ -80,12 +80,13 @@ export async function extractVBAModulesAlternative(
             }
             
             // Extract the code between this module and the next
-            let moduleCode = vbaContent.substring(codeStartIndex, nextModuleIndex).trim();
+            const moduleCode = vbaContent.substring(codeStartIndex, nextModuleIndex).trim();
             
             // Clean up the code - remove attributes and binary artifacts
             const attributeEndIndex = moduleCode.search(/(?:^|\r\n)(?!Attribute VB_)/m);
             if (attributeEndIndex > 0) {
               code = moduleCode.substring(attributeEndIndex).trim();
+              // eslint-disable-next-line no-control-regex
               code = code.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
               extractionSuccess = code.length > 0;
             }

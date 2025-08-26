@@ -2,10 +2,12 @@ import { readWorkbook } from '../xlsxWrapper';
 import { LoggerCallback, ProgressCallback } from '../../types';
 import { extractVBAModulesFromWorkbook, extractVBAModulesFromBinary, extractCodeFromModules } from './moduleExtractor';
 import { extractVBAModulesAlternative } from './alternativeExtractor';
+import { extractVBACodeEnhanced, decompressVBACode } from './enhancedExtractor';
 import { cleanAndDecodeVBACode } from './codeDecoder';
 import { readFileAsArrayBuffer } from '../fileUtils';
 import { VBAModule, VBAModuleType } from './types';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 /**
  * Extracts VBA code from an Excel file
@@ -29,53 +31,87 @@ export async function extractVBACode(
     logger('File loaded successfully. Analyzing Excel structure...', 'info');
     progressCallback(20);
     
-    // Use SheetJS to read the workbook with VBA content
-    const workbook = readWorkbook(arrayBuffer, { 
-      bookVBA: true,  // Important: This tells SheetJS to preserve VBA
-      cellFormula: false, // We don't need formulas
-      cellHTML: false, // We don't need HTML
-      cellText: false  // We don't need text conversion
-    });
-    
-    // Check if the workbook has VBA
-    if (!workbook.vbaraw) {
-      logger('No VBA code found in this file. Make sure the file contains VBA macros.', 'error');
-      return { modules: [], success: false };
-    }
-    
-    logger('VBA project found in the workbook.', 'success');
-    progressCallback(40);
-    
-    // Try to extract VBA modules using multiple methods
+    // Try enhanced extraction first - direct VBA binary processing
+    logger('Attempting enhanced VBA extraction (direct binary processing)...', 'info');
     let modules: VBAModule[] = [];
     let extractionSuccess = false;
     
-    // First attempt: Use SheetJS's built-in VBA extraction
-    if (workbook.Workbook?.VBAProject) {
-      logger('Extracting VBA modules using primary method...', 'info');
-      modules = extractVBAModulesFromWorkbook(workbook, logger);
+    try {
+      // Load as ZIP to get direct access to vbaProject.bin
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const vbaProjectFile = zip.file('xl/vbaProject.bin');
       
-      if (modules.length > 0) {
-        logger(`Successfully extracted ${modules.length} modules using primary method`, 'success');
-        extractionSuccess = true;
+      if (vbaProjectFile) {
+        logger('Found vbaProject.bin, attempting direct extraction...', 'info');
+        const vbaData = await vbaProjectFile.async('uint8array');
+        
+        // Try decompression if needed
+        const decompressedData = decompressVBACode(vbaData, logger);
+        
+        // Extract using enhanced method
+        modules = extractVBACodeEnhanced(decompressedData, logger);
+        
+        if (modules.length > 0 && modules.some(m => m.extractionSuccess)) {
+          extractionSuccess = true;
+          progressCallback(70);
+          logger(`Enhanced extraction successful: ${modules.filter(m => m.extractionSuccess).length}/${modules.length} modules`, 'success');
+        }
       }
+    } catch (enhancedError) {
+      logger(`Enhanced extraction failed: ${enhancedError instanceof Error ? enhancedError.message : String(enhancedError)}`, 'warning');
     }
     
-    // If that didn't work, try alternative methods
-    if (modules.length === 0) {
-      logger('Primary extraction method failed. Trying alternative method...', 'info');
-      modules = await extractVBAModulesAlternative(workbook, arrayBuffer, logger);
+    // Fallback to SheetJS method if enhanced extraction didn't work
+    if (!extractionSuccess) {
+      logger('Enhanced extraction failed, trying SheetJS method...', 'info');
+      progressCallback(30);
       
-      if (modules.length > 0) {
-        logger(`Successfully extracted ${modules.length} modules using alternative method`, 'info');
-        // Mark as partial success since we only got module names
-        extractionSuccess = true;
+      // Use SheetJS to read the workbook with VBA content
+      const workbook = readWorkbook(arrayBuffer, { 
+        bookVBA: true,  // Important: This tells SheetJS to preserve VBA
+        cellFormula: false, // We don't need formulas
+        cellHTML: false, // We don't need HTML
+        cellText: false  // We don't need text conversion
+      });
+      
+      // Check if the workbook has VBA
+      if (!workbook.vbaraw) {
+        logger('No VBA code found in this file. Make sure the file contains VBA macros.', 'error');
+        return { modules: [], success: false };
       }
-    }
-    
-    if (modules.length === 0) {
-      logger('No VBA modules could be extracted. The file may have an unsupported format or corrupted VBA project.', 'error');
-      return { modules: [], success: false };
+      
+      logger('VBA project found in the workbook.', 'success');
+      progressCallback(40);
+      
+      // Try multiple extraction methods
+      modules = [];
+      
+      // First attempt: Use SheetJS's built-in VBA extraction
+      if (workbook.Workbook?.VBAProject) {
+        logger('Extracting VBA modules using primary method...', 'info');
+        modules = extractVBAModulesFromWorkbook(workbook, logger);
+        
+        if (modules.length > 0) {
+          logger(`Successfully extracted ${modules.length} modules using primary method`, 'success');
+          extractionSuccess = true;
+        }
+      }
+      
+      // If that didn't work, try alternative methods
+      if (modules.length === 0) {
+        logger('Primary extraction method failed. Trying alternative method...', 'info');
+        modules = await extractVBAModulesAlternative(workbook, new Uint8Array(arrayBuffer), logger);
+        
+        if (modules.length > 0) {
+          logger(`Successfully extracted ${modules.length} modules using alternative method`, 'info');
+          extractionSuccess = true;
+        }
+      }
+      
+      if (modules.length === 0) {
+        logger('No VBA modules could be extracted. The file may have an unsupported format or corrupted VBA project.', 'error');
+        return { modules: [], success: false };
+      }
     }
     
     progressCallback(70);

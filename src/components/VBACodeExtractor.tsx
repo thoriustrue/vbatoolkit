@@ -1,12 +1,13 @@
-import { Box, Button, Typography, CircularProgress, Alert, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ProcessLogs from './ProcessLogs';
+// This component is not currently used in the application
+// It's a placeholder for future implementation
 
-// ... existing code ...
+const VBACodeExtractor = () => {
+  return (
+    <div>
+      <h2>VBA Code Extractor</h2>
+      <p>This component is not yet implemented.</p>
+    </div>
+  );
+};
 
-      {/* Logs */}
-      {logs.length > 0 && (
-        <ProcessLogs logs={logs} processType="VBA Code Extraction" />
-      )}
-
-// ... existing code ... 
+export default VBACodeExtractor; 
